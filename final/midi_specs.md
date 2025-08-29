@@ -5,7 +5,7 @@ This document outlines the comprehensive MIDI file parsing and validation system
 
 ## Library Capabilities vs Custom Implementation
 
-### What Libraries Handle Automatically
+### What The Library Handles Automatically
 
 #### `pretty_midi` Library
 **Built-in Protections:**
@@ -20,17 +20,6 @@ This document outlines the comprehensive MIDI file parsing and validation system
 - May silently ignore problematic sections
 - No detection of empty or near-empty files
 - Limited validation of note timing relationships
-
-#### `mido` Library  
-**Built-in Protections:**
-- Low-level MIDI message validation
-- Robust handling of malformed MIDI messages
-- Track structure validation
-- Meta-message parsing with error handling
-
-**Limitations:**
-- More technical, requires custom logic for musical validation
-- No high-level musical coherence checking
 
 ### What We Need to Implement Ourselves
 
