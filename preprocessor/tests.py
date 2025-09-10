@@ -8,72 +8,54 @@ from preprocessor import MIDIPreprocessor
 def test_preprocessing():
     """
     Example function showing how to use the preprocessor.
+    Processes all MIDI files in the source_midis folder.
     """
     # Initialize preprocessor
     preprocessor = MIDIPreprocessor(verbose=True)
 
-    # Process a single file
-    # This repo includes a sample MIDI file sourced from Wikipedia commons
-    # https://en.wikipedia.org/wiki/File:MIDI_sample.mid
-    file_path = "example.mid"
+    # Declaration of the folder with the source MIDI files
+    file_path = Path(__file__).resolve().parent
+    file_path = file_path.parent
+    file_path = file_path / "source_midis"
 
-    file_path = os.path.join(os.path.dirname(__file__), file_path)
+    # Check if the folder exists
+    if not os.path.isdir(file_path):
+        return "The source midi folder doesn't exist yet, nothing to process"
 
-    # Process with 1/16 note quantization
-    success, processed_midi, stats = preprocessor.process_midi_file(
-        file_path,
-        quantize_grid=None,  # 1/16 note quantization
-        remove_empty=True
-    )
-
-    if success:
-        print("\nProcessing successful!")
-        print(f"Statistics: {stats}")
-
-        # Save processed file
-        output_path = "processed_" + file_path
-        processed_midi.write(output_path)
-        print(f"Saved to: {output_path}")
-    else:
-        print(f"Processing failed: {stats.get('error', 'Unknown error')}")
-
-
-def batch_process_midi_files(input_folder: str, output_folder: str, quantize_grid: Optional[int] = 16):
-    """
-    Process multiple MIDI files in batch.
-
-    Args:
-        input_folder: Folder containing MIDI files
-        output_folder: Folder to save processed files
-        quantize_grid: Quantization grid (None to skip)
-    """
     # Create output folder if it doesn't exist
-    Path(output_folder).mkdir(parents=True, exist_ok=True)
-
-    preprocessor = MIDIPreprocessor(verbose=False)
+    script_dir = Path(__file__).resolve().parent
+    parent_dir = script_dir.parent
+    processed_dir = parent_dir / "processed"
+    processed_dir.mkdir(parents=True, exist_ok=True)
 
     success_count = 0
     fail_count = 0
 
     # Find all MIDI files
-    midi_files = []
+    midi_files = set()
     for ext in ['*.mid', '*.midi', '*.MID', '*.MIDI']:
-        midi_files.extend(Path(input_folder).glob(ext))
+        midi_files.update(file_path.glob(ext))
+    midi_files = list(midi_files)
 
     print(f"Found {len(midi_files)} MIDI files to process")
 
     for midi_path in midi_files:
         success, processed_midi, stats = preprocessor.process_midi_file(
             str(midi_path),
-            quantize_grid=quantize_grid,
+            quantize_grid=None,  # 1/16 note quantization
             remove_empty=True
         )
 
         if success:
-            output_path = Path(output_folder) / midi_path.name
+            # Create output filename with _processed suffix
+            input_stem = midi_path.stem
+            input_suffix = midi_path.suffix
+            output_file = f"{input_stem}_processed{input_suffix}"
+            output_path = processed_dir / output_file
+
             processed_midi.write(str(output_path))
             success_count += 1
-            print(f"✓ {midi_path.name} - {stats['total_notes']} notes")
+            print(f"✓ {midi_path.name} - {stats['total_notes']} notes - Saved to: {output_path}")
         else:
             fail_count += 1
             print(f"✗ {midi_path.name} - {stats.get('error', 'Unknown error')}")
@@ -83,7 +65,5 @@ def batch_process_midi_files(input_folder: str, output_folder: str, quantize_gri
 
 if __name__ == "__main__":
 	# Uncomment to run examples
-	# test_preprocessing()
+	test_preprocessing()
 	pass
-
-

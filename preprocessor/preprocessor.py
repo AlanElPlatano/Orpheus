@@ -22,6 +22,7 @@ class MIDIPreprocessor:
         """
         self.verbose = verbose
 
+    # Quantize the notes from the MIDI files in order to adapt them to a grid
     def quantize_midi_timing(self, midi_file: pretty_midi.PrettyMIDI, quantize_grid: Optional[int] = None) -> pretty_midi.PrettyMIDI:
         return quantize_midi_timing(midi_file, quantize_grid=quantize_grid, verbose=self.verbose)
 

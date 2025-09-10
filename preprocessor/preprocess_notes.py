@@ -16,8 +16,6 @@ def preprocess_notes(midi_file: pretty_midi.PrettyMIDI, verbose: bool = False) -
     Returns:
         Preprocessed PrettyMIDI object
     """
-    if verbose:
-        print("Starting note preprocessing")
 
     tempo = midi_file.estimate_tempo()
     if tempo <= 0:
