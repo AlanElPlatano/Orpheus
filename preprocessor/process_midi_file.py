@@ -1,9 +1,9 @@
 from typing import Optional, Tuple, Dict
 import pretty_midi
 
-from get_preprocessing_stats import get_preprocessing_stats
-from preprocess_notes import preprocess_notes
-from quantize_midi_timing import quantize_midi_timing
+from stats import get_preprocessing_stats
+from cleanup import preprocess_notes
+from quantizer import quantize_midi_timing
 from remove_empty_tracks import remove_empty_tracks
 
 
@@ -61,5 +61,3 @@ def process_midi_file(file_path: str, quantize_grid: Optional[int] = None, remov
         if verbose:
             print(f"Error processing {file_path}: {str(e)}")
         return False, None, {'error': str(e)}
-
-

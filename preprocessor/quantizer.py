@@ -69,5 +69,3 @@ def quantize_midi_timing(midi_file: pretty_midi.PrettyMIDI, quantize_grid: int =
         print(f"Quantized {notes_quantized} notes")
 
     return midi_file
-
-

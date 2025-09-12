@@ -91,5 +91,3 @@ def preprocess_notes(midi_file: pretty_midi.PrettyMIDI, verbose: bool = False) -
               f"Trimmed {total_trimmed} overlapping notes")
 
     return midi_file
-
-

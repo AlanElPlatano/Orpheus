@@ -64,6 +64,5 @@ def test_preprocessing():
 
 
 if __name__ == "__main__":
-	# Uncomment to run examples
 	test_preprocessing()
 	pass

@@ -1,10 +1,10 @@
 import pretty_midi
 from typing import Optional, Tuple, Dict
 
-from quantize_midi_timing import quantize_midi_timing
-from preprocess_notes import preprocess_notes
+from quantizer import quantize_midi_timing
+from cleanup import preprocess_notes
 from remove_empty_tracks import remove_empty_tracks
-from get_preprocessing_stats import get_preprocessing_stats
+from stats import get_preprocessing_stats
 
 
 class MIDIPreprocessor:

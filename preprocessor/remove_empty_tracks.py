@@ -21,5 +21,3 @@ def remove_empty_tracks(midi_file: pretty_midi.PrettyMIDI, verbose: bool = False
         print(f"Removed {removed_count} empty tracks")
 
     return midi_file
-
-
