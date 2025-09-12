@@ -1,6 +1,9 @@
 import warnings
 import pretty_midi
+import miditoolkit
+from .bpm_reader import get_tempo_from_midi
 
+ 
 
 def preprocess_notes(midi_file: pretty_midi.PrettyMIDI, verbose: bool = False) -> pretty_midi.PrettyMIDI:
     """
@@ -17,10 +20,11 @@ def preprocess_notes(midi_file: pretty_midi.PrettyMIDI, verbose: bool = False) -
         Preprocessed PrettyMIDI object
     """
 
-    tempo = midi_file.estimate_tempo()
-    if tempo <= 0:
-        warnings.warn("Invalid tempo detected, using default 120 BPM")
-        tempo = 120.0
+    # Use the tempo extraction method from 'bpm_reader'
+    tempo = get_tempo_from_midi(midi_file)
+    
+    if verbose:
+        print(f"Using tempo: {tempo} BPM")
 
     beats_per_second = tempo / 60.0
     min_duration = (4.0 / 64) / beats_per_second  # 1/64 note duration
