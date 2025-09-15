@@ -1,11 +1,15 @@
 import warnings
 import pretty_midi
 import miditoolkit
-from .bpm_reader import get_tempo_from_midi
+from typing import Optional
+from bpm_reader import get_tempo_from_midi
 
- 
 
-def preprocess_notes(midi_file: pretty_midi.PrettyMIDI, verbose: bool = False) -> pretty_midi.PrettyMIDI:
+def preprocess_notes(
+    midi_file: pretty_midi.PrettyMIDI, 
+    tempo_bpm: Optional[float] = None,
+    verbose: bool = False
+) -> pretty_midi.PrettyMIDI:
     """
     Clean up notes before validation:
     - Remove notes shorter than 1/64 note duration
@@ -14,14 +18,17 @@ def preprocess_notes(midi_file: pretty_midi.PrettyMIDI, verbose: bool = False) -
 
     Args:
         midi_file: PrettyMIDI object to preprocess
+        tempo_bpm: Pre-calculated tempo in BPM (if None, will be re-calculated)
         verbose: If True, print detailed processing information
 
     Returns:
         Preprocessed PrettyMIDI object
     """
-
-    # Use the tempo extraction method from 'bpm_reader'
-    tempo = get_tempo_from_midi(midi_file)
+    # Use provided tempo or calculate if not provided
+    if tempo_bpm is None:
+        tempo = get_tempo_from_midi(midi_file)
+    else:
+        tempo = tempo_bpm
     
     if verbose:
         print(f"Using tempo: {tempo} BPM")
