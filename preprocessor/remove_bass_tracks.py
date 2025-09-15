@@ -24,6 +24,9 @@ def remove_bass_tracks(
     original_track_count = len(midi_file.instruments)
     tracks_to_keep = []
     
+    # Bass-related terms in multiple languages, outside the loop to avoid redeclaring every iteration
+    bass_terms = ['bass', 'bajo', 'basso', 'contrabajo', 'tololoche', 'upright']
+    
     for inst_idx, instrument in enumerate(midi_file.instruments):
         # Get track name (program name or generic name)
         if instrument.name:
@@ -41,14 +44,24 @@ def remove_bass_tracks(
                 print(f"Track {inst_idx}: Skipping drum track (will not be included)")
             continue
         
-        # Analyze note distribution
+        # Check if track name contains bass-related terms
+        # If the name gives out it is a bass track, we don't have to check the notes themselves
+        track_name_lower = track_name.lower()
+        is_named_bass = any(term in track_name_lower for term in bass_terms)
+        
+        if is_named_bass:
+            if verbose:
+                print(f"Track {inst_idx} '{track_name}': Removing bass track by name")
+            continue  # Skip this track (don't add to tracks_to_keep)
+        
+        # Analyze note distribution for non-bass-named tracks
         total_notes = len(instrument.notes)
         
         if total_notes == 0:
             # Empty track, will be handled by remove_empty_tracks
             tracks_to_keep.append(instrument)
             continue
-        
+
         # Count notes below threshold
         bass_notes = sum(1 for note in instrument.notes if note.pitch < threshold_note)
         bass_percentage = (bass_notes / total_notes) * 100
