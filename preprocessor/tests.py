@@ -103,8 +103,8 @@ def test_bass_removal_only():
     bass_test_dir = parent_dir / "processed" / "bass_removal_tests"
     bass_test_dir.mkdir(parents=True, exist_ok=True)
     
-    for threshold in [36, 48, 60]:  # C2, C3, C4
-        note_names = {36: "C2", 48: "C3", 60: "C4"}
+    for threshold in [24, 36, 48]:  # C1, C2, C3
+        note_names = {24: "C1", 36: "C2", 48: "C3"}
         print(f"\n--- Testing with threshold: {note_names[threshold]} (MIDI note {threshold}) ---")
         
         success, processed_midi, stats = preprocessor.process_midi_file(

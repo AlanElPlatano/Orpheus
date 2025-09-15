@@ -24,8 +24,9 @@ def remove_bass_tracks(
     original_track_count = len(midi_file.instruments)
     tracks_to_keep = []
     
-    # Bass-related terms in multiple languages, outside the loop to avoid redeclaring every iteration
+    # Bass-related terms in multiple languages, we check for track names to detect bass tracks
     bass_terms = ['bass', 'bajo', 'basso', 'contrabajo', 'tololoche', 'upright']
+    # declared outside the loop to avoid redeclaring every iteration
     
     for inst_idx, instrument in enumerate(midi_file.instruments):
         # Get track name (program name or generic name)
