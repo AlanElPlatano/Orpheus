@@ -4,17 +4,17 @@ from typing import Optional
 
 def remove_bass_tracks(
     midi_file: pretty_midi.PrettyMIDI,
-    threshold_note: int = 48,  # Default to C3 (MIDI note 48)
+    threshold_note: int = 36,  # Default to C2 (MIDI note 36)
     verbose: bool = False
 ) -> pretty_midi.PrettyMIDI:
     """
     Remove tracks that primarily contain bass notes below a specified threshold.
-    A track is considered a bass track if more than 50% of its notes are below the threshold.
+    A track is considered a bass track if more than 35% of its notes are below the threshold.
     Most bass tracks don't play all the time in their lower registry, hence the tolerance
     
     Args:
         midi_file: PrettyMIDI object to process
-        threshold_note: MIDI note number threshold (default 48 = C3)
+        threshold_note: MIDI note number threshold (default 36 = C2)
                        Tracks with majority of notes below this are removed
         verbose: If True, print detailed processing information
     
@@ -25,11 +25,20 @@ def remove_bass_tracks(
     tracks_to_keep = []
     
     for inst_idx, instrument in enumerate(midi_file.instruments):
-        # Always keep drum tracks
+        # Get track name (program name or generic name)
+        if instrument.name:
+            track_name = instrument.name
+        else:
+            # Try to get program name from MIDI program number
+            try:
+                track_name = pretty_midi.program_to_instrument_name(instrument.program)
+            except:
+                track_name = f"Track {inst_idx}"
+
+        # Skip drum tracks, follows the same logic as cleanup.py
         if instrument.is_drum:
-            tracks_to_keep.append(instrument)
             if verbose:
-                print(f"Track {inst_idx}: Keeping drum track")
+                print(f"Track {inst_idx}: Skipping drum track (will not be included)")
             continue
         
         # Analyze note distribution
@@ -45,19 +54,22 @@ def remove_bass_tracks(
         bass_percentage = (bass_notes / total_notes) * 100
         
         # Determine if this is a bass track
-        is_bass_track = bass_percentage > 30  # More than 80% of notes are below threshold
+        is_bass_track = bass_percentage > 35  # More than 35% of notes are below threshold
         
         if is_bass_track:
             if verbose:
                 avg_pitch = sum(note.pitch for note in instrument.notes) / total_notes
-                print(f"Track {inst_idx}: Removing bass track - "
-                      f"{bass_percentage:.1f}% notes below {threshold_note} "
-                      f"(avg pitch: {avg_pitch:.1f})")
+                # Convert MIDI note to note name for clarity
+                note_name = pretty_midi.note_number_to_name(threshold_note)
+                print(f"Track {inst_idx} '{track_name}': Removing bass track - "
+                      f"{bass_percentage:.1f}% notes below {note_name} (MIDI {threshold_note}), "
+                      f"avg pitch: {avg_pitch:.1f}")
         else:
             tracks_to_keep.append(instrument)
-            if verbose and bass_percentage > 50:  # Notable bass content but not removed
-                print(f"Track {inst_idx}: Keeping mixed track - "
-                      f"{bass_percentage:.1f}% notes below {threshold_note}")
+            if verbose and bass_percentage > 25:  # Notable bass notes but not enough to be removed
+                note_name = pretty_midi.note_number_to_name(threshold_note)
+                print(f"Track {inst_idx} '{track_name}': Keeping mixed track - "
+                      f"{bass_percentage:.1f}% notes below {note_name} (MIDI {threshold_note})")
     
     midi_file.instruments = tracks_to_keep
     

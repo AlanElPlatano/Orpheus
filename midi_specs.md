@@ -233,10 +233,10 @@ def is_valid_timing_for_signature(relative_start, time_sig, beat_duration):
 
 #### Bass Track Removal and Two-Track Requirement
 ```python
-def remove_bass_tracks(midi_file, bass_threshold_pitch=48):
+def remove_bass_tracks(midi_file, bass_threshold_pitch=36):
     """
-    Remove tracks that contain notes below the specified pitch threshold
-    Default: C3 (MIDI note 48)
+    Remove tracks that contain a majority of notes below the specified pitch threshold
+    Default: C2 (MIDI note 36)
     
     Args:
         midi_file: PrettyMIDI object
@@ -520,7 +520,7 @@ class MIDIValidator:
             'quantize_grid': None,  # No quantization by default
             'allowed_time_signatures': [(4, 4), (3, 4), (2, 4), (6, 8)],
             'enable_timing_validation': True,
-            'bass_threshold_pitch': 48,  # C3 - notes below this are considered bass
+            'bass_threshold_pitch': 36,  # C2 - notes below this are considered bass
             'min_notes_per_second': 0.5,
             'max_notes_per_second': 20,
             'min_total_notes': 10,
@@ -645,7 +645,7 @@ VALIDATION_CONFIG = {
     'enable_timing_validation': True, # Only applies if quantization enabled
     
     # Track filtering
-    'bass_threshold_pitch': 48,      # C3 - remove tracks with notes below this
+    'bass_threshold_pitch': 36,      # C2 - remove tracks with notes below this
     
     # Time signature constraints  
     'allowed_time_signatures': [(4, 4), (3, 4), (2, 4), (6, 8)],
