@@ -1,8 +1,15 @@
 import warnings
 import pretty_midi
+from typing import Optional
+from bpm_reader import get_tempo_from_midi
 
 
-def quantize_midi_timing(midi_file: pretty_midi.PrettyMIDI, quantize_grid: int = None, verbose: bool = False) -> pretty_midi.PrettyMIDI:
+def quantize_midi_timing(
+    midi_file: pretty_midi.PrettyMIDI, 
+    quantize_grid: int = None,
+    tempo_bpm: Optional[float] = None,
+    verbose: bool = False
+) -> pretty_midi.PrettyMIDI:
     """
     Quantize note timing to user-specified grid divisions.
 
@@ -10,6 +17,7 @@ def quantize_midi_timing(midi_file: pretty_midi.PrettyMIDI, quantize_grid: int =
         midi_file: PrettyMIDI object to quantize
         quantize_grid: Grid division (e.g., 16 for 1/16 notes, 32 for 1/32 notes)
                       None to skip quantization
+        tempo_bpm: Pre-calculated tempo in BPM (if None, will be calculated)
         verbose: If True, print detailed processing information
 
     Returns:
@@ -23,19 +31,27 @@ def quantize_midi_timing(midi_file: pretty_midi.PrettyMIDI, quantize_grid: int =
     if verbose:
         print(f"Applying quantization with grid={quantize_grid}")
 
-    # Calculate grid size in seconds
-    tempo = midi_file.estimate_tempo()
-    if tempo <= 0:
+    # Use provided tempo or calculate again if not provided
+    if tempo_bpm is None:
+        tempo = get_tempo_from_midi(midi_file)
+    else:
+        tempo = tempo_bpm
+        
+    # Logic limits for tempo
+    if tempo <= 0 or tempo >= 360:
         warnings.warn("Invalid tempo detected, using default 120 BPM")
         tempo = 120.0
-    print(f"Tempo estimado: {tempo}")
+    
+    if verbose:
+        print(f"Using tempo: {tempo:.2f} BPM")
 
     beats_per_second = tempo / 60.0
     # Duration of one grid unit (4.0 represents a whole note)
     grid_duration = (4.0 / quantize_grid) / beats_per_second
 
-    if verbose:
-        print(f"Tempo: {tempo:.2f} BPM, Grid duration: {grid_duration:.4f} seconds")
+    # I used this a lot during development but it is not so useful now
+    # if verbose:
+    #    print(f"Grid duration: {grid_duration:.4f} seconds")
 
     notes_quantized = 0
 

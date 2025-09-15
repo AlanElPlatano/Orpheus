@@ -1,13 +1,19 @@
-from typing import Dict
+from typing import Dict, Optional
 import pretty_midi
+from bpm_reader import get_tempo_from_midi
 
 
-def get_preprocessing_stats(midi_file: pretty_midi.PrettyMIDI) -> Dict:
+def get_preprocessing_stats(
+    midi_file: pretty_midi.PrettyMIDI, 
+    tempo_bpm: Optional[float] = None,
+    verbose: bool = False
+) -> Dict:
     """
     Get statistics about the MIDI file for validation purposes.
 
     Args:
         midi_file: PrettyMIDI object
+        tempo_bpm: Pre-calculated tempo in BPM (if None, will be calculated)
 
     Returns:
         Dictionary containing preprocessing statistics
@@ -19,7 +25,14 @@ def get_preprocessing_stats(midi_file: pretty_midi.PrettyMIDI) -> Dict:
     melodic_tracks = len(midi_file.instruments) - drum_tracks
 
     duration = midi_file.get_end_time()
-    tempo = midi_file.estimate_tempo()
+    
+    # Use provided tempo or calculate if not provided
+    if tempo_bpm is None:
+        tempo = get_tempo_from_midi(midi_file)
+        if verbose:
+            print(f"BPM not provided as an argument, recalculated as {tempo_bpm}")
+    else:
+        tempo = tempo_bpm
 
     # Calculate note density
     notes_per_second = total_notes / duration if duration > 0 else 0
@@ -56,5 +69,3 @@ def get_preprocessing_stats(midi_file: pretty_midi.PrettyMIDI) -> Dict:
         'short_notes_remaining': short_notes,
         'time_signatures': len(midi_file.time_signature_changes)
     }
-
-
