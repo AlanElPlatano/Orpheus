@@ -8,14 +8,15 @@ def remove_bass_tracks(
     verbose: bool = False
 ) -> pretty_midi.PrettyMIDI:
     """
-    Remove tracks that primarily contain bass notes below a specified threshold.
-    A track is considered a bass track if more than 35% of its notes are below the threshold.
-    Most bass tracks don't play all the time in their lower registry, hence the tolerance
+    Remove tracks where any of the following are true:
+    - Contain any word for "bass" in the track name
+    - If more than 35% of its notes are below the threshold.
+        (Most bass tracks don't play all the time in their lower registry, hence the tolerance).
     
     Args:
         midi_file: PrettyMIDI object to process
         threshold_note: MIDI note number threshold (default 36 = C2)
-                       Tracks with majority of notes below this are removed
+                        Tracks with majority of notes below this are removed
         verbose: If True, print detailed processing information
     
     Returns:
@@ -25,15 +26,16 @@ def remove_bass_tracks(
     tracks_to_keep = []
     
     # Bass-related terms in multiple languages, we check for track names to detect bass tracks
+    # If we detect a bass track by its name, we avoid wasting resources by checking the notes themselves
     bass_terms = ['bass', 'bajo', 'basso', 'contrabajo', 'tololoche', 'upright']
-    # declared outside the loop to avoid redeclaring every iteration
+    # Declared outside the loop to avoid redeclaring every iteration
     
     for inst_idx, instrument in enumerate(midi_file.instruments):
         # Get track name (program name or generic name)
         if instrument.name:
             track_name = instrument.name
         else:
-            # Try to get program name from MIDI program number
+            # If it fails, try to get program name from MIDI program number
             try:
                 track_name = pretty_midi.program_to_instrument_name(instrument.program)
             except:
@@ -55,7 +57,7 @@ def remove_bass_tracks(
                 print(f"Track {inst_idx} '{track_name}': Removing bass track by name")
             continue  # Skip this track (don't add to tracks_to_keep)
         
-        # Analyze note distribution for non-bass-named tracks
+        # Analyze note amount for non-bass-named tracks
         total_notes = len(instrument.notes)
         
         if total_notes == 0:
@@ -67,24 +69,25 @@ def remove_bass_tracks(
         bass_notes = sum(1 for note in instrument.notes if note.pitch < threshold_note)
         bass_percentage = (bass_notes / total_notes) * 100
         
-        # Determine if this is a bass track
+        # Determine if this is a bass track based on note range
         is_bass_track = bass_percentage > 35  # More than 35% of notes are below threshold
         
         if is_bass_track:
             if verbose:
                 avg_pitch = sum(note.pitch for note in instrument.notes) / total_notes
-                # Convert MIDI note to note name for clarity
+                # Convert threshold MIDI note to name for clarity
                 note_name = pretty_midi.note_number_to_name(threshold_note)
                 print(f"Track {inst_idx} '{track_name}': Removing bass track - "
                       f"{bass_percentage:.1f}% notes below {note_name} (MIDI {threshold_note}), "
                       f"avg pitch: {avg_pitch:.1f}")
         else:
             tracks_to_keep.append(instrument)
-            if verbose and bass_percentage > 25:  # Notable bass notes but not enough to be removed
+            if verbose and bass_percentage > 25:  # Notable bass notes but not enough to be removed, just a warning
                 note_name = pretty_midi.note_number_to_name(threshold_note)
                 print(f"Track {inst_idx} '{track_name}': Keeping mixed track - "
                       f"{bass_percentage:.1f}% notes below {note_name} (MIDI {threshold_note})")
     
+    # Put the remaining tracks into the file
     midi_file.instruments = tracks_to_keep
     
     removed_count = original_track_count - len(midi_file.instruments)
