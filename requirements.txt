@@ -1,0 +1,6 @@
+pretty_midi>=0.2.10
+miditoolkit>=0.1.16
+numpy>=1.23
+scipy>=1.10
+mido>=1.2.10
+
