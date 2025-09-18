@@ -10,7 +10,7 @@ from stats import get_preprocessing_stats
 
 def validate_midi_file(file_path: str, verbose: bool = False) -> Dict[str, Any]:
     """
-    Comprehensive MIDI file validation.
+    Comprehensive MIDI file validation using all the other files from the validator module
     
     Args:
         file_path: Path to the MIDI file

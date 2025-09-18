@@ -4,7 +4,7 @@ from typing import Tuple, List
 
 def detect_advanced_corruption(midi_file: pretty_midi.PrettyMIDI, verbose: bool = False) -> Tuple[bool, List[str]]:
     """
-    Detect subtle corruption patterns that basic parsers might miss.
+    Detect subtle corruption patterns in the MIDI files.
     
     Args:
         midi_file: PrettyMIDI object to validate
@@ -16,7 +16,7 @@ def detect_advanced_corruption(midi_file: pretty_midi.PrettyMIDI, verbose: bool 
     issues = []
     file_end_time = midi_file.get_end_time()
     
-    # Track statistics for anomaly detection
+    # Track statistics
     total_notes = 0
     pitch_counts = {}
     velocity_counts = {}

@@ -62,9 +62,9 @@ def validate_musical_content(midi_file: pretty_midi.PrettyMIDI, verbose: bool = 
             
         if verbose:
             if issues:
-                print(f"⚠ Found {len(issues)} musical content issues")
+                print(f"Found {len(issues)} musical content issues")
             else:
-                print("✓ Musical content validation passed")
+                print("Musical content validation passed")
                 
     except Exception as e:
         issues.append(f"Error during musical content validation: {str(e)}")

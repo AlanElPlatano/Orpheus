@@ -6,7 +6,8 @@ from validator import validate_midi_file
 
 def validate_batch(directory_path: str, extensions: List[str] = None, verbose: bool = False) -> Dict[str, Any]:
     """
-    Validate all MIDI files in a directory.
+    Validate all MIDI files in a directory in batch.
+    It just calls the function from validator, gets the stats and prints them.
     
     Args:
         directory_path: Path to directory containing MIDI files
