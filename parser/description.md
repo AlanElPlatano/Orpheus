@@ -1,211 +1,398 @@
-# MIDI Parser — Design & Specification
+# MIDI Parser Specification v2.0 – MidiTok Integration
 
-> Goal: convert a folder of MIDI files into a deterministic, token-based text format suitable for training generative models, and be able to convert model output tokens back into valid MIDI files with high fidelity.
+> Goal: Convert a folder of MIDI files into a token-based format suitable for training generative models using MidiTok, with high-fidelity round-trip conversion.
 
 ---
 
 ## TL;DR
-- **Library :** primary: **miditoolkit** (works natively in MIDI ticks and builds on `mido`). Use `mido` as the low-level read/write backend when you need ultimate control.
-- **Best parsed-file format:** **JSON** (one file per MIDI) with a compact token array and explicit metadata; for large corpora prefer **NDJSON (.jsonl)** or gzipped JSON.  
-- **Round-trip (reversible) strategy:** preserve native timing (ticks), full tempo map, time signatures, PPQ (ticks-per-quarter), program/patch info, channel info, and deterministic event ordering; run automated round-trip tests (MIDI → tokens → MIDI → compare). 
----
-
-## 1. Why the library choice matters
-Working with symbolic MIDI data can be done at different abstraction layers:
-- low-level message & tick fidelity (raw delta ticks, channels, program changes),
-- note-level abstractions (notes as events with start/end in seconds or ticks),
-- high-level musical analysis (key detection, chord labeling, beat/beat positions).
-
-Your parser must be able to both read all relevant MIDI meta events and write MIDI back with the same timing semantics. That pushes us toward libraries that:
-- operate in MIDI ticks (not only seconds),
-- expose tempo maps, time signatures, program / channel info,
-- let you read and write files faithfully.
-
-### Recommendation (short)
-- **Primary library: `miditoolkit`** — built around ticks and exposes note objects, tempo map, time signatures and instrument/program info. It uses `mido` under the hood but provides a more convenient note-level API while preserving tick-accurate timing.  
-- **Fallback / low-level layer: `mido`** — if you need to work at the message/delta-time level or you want guaranteed control over every message.  
-- **Use `pretty_midi` only for analysis helpers** (tempo estimation, chroma, pitch class features) — it is easy to use but works more in seconds and sometimes hides tick-level details.
-
-(See the full pros/cons section in the appendix.)
+- **Primary Library:** **MidiTok** for tokenization/detokenization with **miditoolkit** for MIDI I/O
+- **Tokenization Strategy:** **REMI** (default) for transformer compatibility
+- **Output Format:** JSON with integer token sequences and comprehensive metadata
+- **Key Feature:** Professional-grade tokenization with proven transformer compatibility
 
 ---
 
-## 2. Chosen parsed-file format
-**Format:** one JSON file per MIDI, with a schema that stores metadata and token arrays per track.
+## 1. Technology Stack & Rationale
 
-**Filename convention:**
-```
-{KEY}-{TEMPO}bpm-{sanitized_title}.tok.json
-```
-Example: `F#m-136bpm-very_cool_title.tok.json`
+### Core Libraries
+- **MidiTok**: Primary tokenization engine (supports REMI, TSD, Structured, CPWord, Octuple)
+- **miditoolkit**: MIDI file I/O and manipulation
+- **mido**: Low-level MIDI backend (via miditoolkit)
 
-**Schema (example)**
+### Why MidiTok?
+- **Battle-tested**: Used in major music AI research projects
+- **Multiple Strategies**: Supports all major tokenization formats
+- **Round-trip Fidelity**: Designed specifically for lossless MIDI conversion
+- **Transformer Optimized**: Tokens are optimized for modern neural architectures
+
+---
+
+## 2. Tokenization Strategy Selection
+
+### Primary Choice: **REMI Tokenization**
+```python
+from miditok import REMI
+tokenizer = REMI(
+    pitch_range=(21, 109),      # A0 to C8
+    beat_resolution=4,          # 16th note resolution
+    num_velocities=16,          # Velocity quantization
+    additional_tokens={
+        'Chord': True,          # Include chord tokens
+        'Rest': True,           # Include rest tokens
+        'Tempo': True,          # Include tempo changes
+        'TimeSignature': True,  # Include time signature changes
+        'Program': True,        # Include program changes
+    }
+)
+```
+
+### Alternative Strategies (Configurable)
+- **TSD**: Time-Shift Duration encoding
+- **Structured**: Explicit musical structure
+- **CPWord**: Compound Word encoding
+- **Octuple**: 8-dimensional feature encoding
+
+### Decision Framework
+```python
+TOKENIZATION_STRATEGIES = {
+    "transformer_training": "REMI",      # Best for transformers
+    "simplicity": "TSD",                 # Simpler vocabulary
+    "explicit_structure": "Structured",  # Clear musical hierarchy
+    "compression": "CPWord",             # Shorter sequences
+}
+```
+
+---
+
+## 3. Output Format Specification
+
+### JSON Schema
 ```json
 {
-  "version": "1.0",
-  "source_file": "original_filename.mid",
-  "tokenization": "REMI",  // or another MidiTok format
-  "ppq": 480,
+  "version": "2.0",
+  "source_file": "original.mid",
+  "tokenization": "REMI",
+  "tokenizer_config": {
+    "pitch_range": [21, 109],
+    "beat_resolution": 4,
+    "num_velocities": 16,
+    "additional_tokens": {
+      "Chord": true,
+      "Rest": true,
+      "Tempo": true,
+      "TimeSignature": true,
+      "Program": true
+    }
+  },
+  "metadata": {
+    "ppq": 480,
+    "tempo_changes": [
+      {"tick": 0, "bpm": 120.0},
+      {"tick": 1920, "bpm": 140.0}
+    ],
+    "time_signatures": [
+      {"tick": 0, "numerator": 4, "denominator": 4}
+    ],
+    "key_signature": "C major",
+    "duration_seconds": 180.5
+  },
   "tracks": [
     {
-      "name": "Piano RH",
+      "name": "Piano Right Hand",
       "program": 0,
       "is_drum": false,
       "type": "melody",
-      "tokens": [120, 45, 678, 234, 890]  // integer tokens from MidiTok
+      "tokens": [120, 45, 678, 234, 890, 123, ...],
+      "token_count": 1450,
+      "note_count": 320
     }
   ],
-  "vocabulary": {  // MidiTok's token-to-meaning mapping
-    "120": "Bar_Start",
-    "45": "Position_0", 
-    "678": "NoteOn_C4_v80",
-    // etc.
-  }
+  "global_events": [56, 78, 92],  // Tempo, time signature changes
+  "sequence_length": 2048
 }
 ```
 
-**Token design notes:**
-- Use integer tick units to avoid rounding errors. `WAIT_{ticks}` is the recommended form.  
-- `NOTE_OFF_{pitch}` or alternatively encode durations by using a `DUR_{ticks}` token after `NOTE_ON`. Pick one style and document it.  
-- For chords use `CHORD_{p1}_{p2}_{p3}` (declaring notes in ascending order), all over the project we'll ignore velocities and default them when processing JSON->MIDI to default all notes at 80 velocity
-
----
-
-## 3. Token grammar & deterministic rules
-Pick a precise token grammar. Here's a compact, unambiguous EBNF-like sketch:
-
+### File Naming Convention
 ```
-DOCUMENT   ::= METADATA TRACK+
-METADATA   ::= {version, ppq, tempo_map, time_signatures, key_signature, source_file}
-TRACK      ::= {name, program, is_drum, type, tokens}
-TOKENS     ::= TOKEN+
-TOKEN      ::= BAR_{bar_index} | POS_{pos_index} | WAIT_{ticks} | TEMPO_{bpm} | NOTE_ON_{pitch} | NOTE_OFF_{pitch} | CHORD_{p1}_{p2}_... | PROG_{program}
+{KEY}-{AVG_TEMPO}bpm-{TOKENIZATION}-{sanitized_title}.json
+```
+Example: `Cm-120bpm-REMI-sonata_no_1.json`
+
+---
+
+## 4. Processing Pipeline
+
+### Step 1: MIDI Loading & Validation
+```python
+def load_and_validate_midi(file_path):
+    # Load MIDI with miditoolkit
+    # Validate file integrity
+    # Extract metadata (PPQ, tempo map, time signatures)
+    return midi_object, metadata
 ```
 
-**Event ordering rules (deterministic)**
-At a given tick:  
-1. Tempo/time-signature/key-signature changes first (apply before notes).  
-2. NOTE_OFF messages next.  
-3. NOTE_ON messages last.  
-Within the same group sort by track index then by pitch ascending. This ordering is important to guarantee deterministic round-trip conversions.
-
-**Quantization rules**
-- Work in *ticks* using the original file's PPQ (ticks-per-quarter). Avoid converting to seconds as the canonical internal representation.  
-- Quantize to a grid (e.g., 1/24 or 1/96 of a quarter) for a fixed resolution across files
-
----
-
-## 4. Chord detection & track typing
-**Chord detection (when to emit a `CHORD` token):**
-- Group notes that start on the exact same tick and have at least `chord_threshold` notes (default 3).  
-- Sort chord pitches ascending and list velocities in the same order.
-
-**Track type detection:**
-1. Try heuristics on the track name (case-insensitive): if it contains words like `melody`, `lead`, `melodia` → `melody`. If it contains `chord`, `guitar`, `piano_accomp`, `acordes` → `chord`.  
-2. If track name is inconclusive, analyze event structure: if the track has >= 1 event with simultaneous notes count ≥ `chord_threshold`, mark as `chord`; otherwise `melody`.
-
-Record the detected type in the parsed file so downstream consumers can filter or treat tracks differently.
-
----
-
-## 5. Ensuring two-way fidelity (MIDI → tokens → MIDI)
-To guarantee the parser works both ways, you must:
-
-1. **Preserve all needed metadata** in the parsed file: `ppq`, `tempo_map` (list of tempo events with ticks), `time_signatures`, `instrument programs`, `channels`, `is_drum` flags.  
-2. **Use ticks as canonical time units** — store all timing as integer ticks.  
-3. **Keep the exact tempo map** (not just a single tempo).  
-4. **Record program changes** preserved and encoded as tokens when they occur. This ensures that instrument changes within a track are captured. ignore control change events
-5. **Define and document deterministic ordering** for simultaneous events (see above).
-6. **Round-trip validation**: implement tests that compare the original MIDI and the round-tripped MIDI (tolerance for allowed differences, e.g., removed tiny timing noise if quantized, ignore program changes). Store a small suite of metrics after conversion: total notes, number of unmatched note_on/off events, percent of notes with changed start tick, mean start offset, etc.
-
-**Round-trip test outline:**
-- For each MIDI: parse → tokens → write-MIDI → compare (by expanding both files into event lists in ticks and comparing).  
-- Report mismatches. If > `X%` of events differ, flag file for manual inspection.
-
----
-
-## 6. Token vocabulary choices
-
-Decision: Use MidiTok with REMI tokenization
-
-Why REMI?
-- Encodes bar, position, pitch, duration, velocity in a structured way
-- Proven success with transformer models
-- Handles all MIDI features automatically
-- MidiTok manages the complex token grammar
-
----
-
-## 7. Project structure (recommended modules)
-Split the project into small, testable modules:
+### Step 2: Track Analysis & Typing
+```python
+def analyze_tracks(midi_obj):
+    # Apply chord/melody detection heuristics
+    # Classify tracks as: 'melody', 'chord', 'bass', 'drum', 'accompaniment'
+    # Filter out empty/invalid tracks
+    return track_metadata
 ```
-parser/
-├── miditok_wrapper.py    # Wraps MidiTok with your track-based logic
-├── track_analyzer.py     # Your chord/melody detection heuristics  
-├── metadata_manager.py   # Handles your JSON schema & naming
-├── roundtrip_validator.py # Validation using MidiTok's capabilities
-└── config.py             # MidiTok configuration + your settings
+
+### Step 3: Tokenization with MidiTok
+```python
+def tokenize_midi(midi_obj, tokenizer):
+    # Let MidiTok handle complex tokenization logic
+    # Preserve all musical features automatically
+    tokens = tokenizer(midi_obj)
+    return tokens, tokenizer.vocab
+```
+
+### Step 4: JSON Serialization
+```python
+def create_output_json(midi_path, tokens, metadata, track_info):
+    # Combine all data into standardized JSON format
+    # Compress if needed (gzip optional)
+    return json_data
 ```
 
 ---
 
-## 8. Other important factors & gotchas
-- **Time signatures & changing meters:** some tokenizations assume 4/4; decide whether you support arbitrary meters and time signature changes.  
-- **Pedal (sustain) & control changes:** pedal can extend note durations; treat pedal specially if you want musical fidelity.  
-- **Velocity quantization:** use a limited set of velocity buckets (e.g., 8 or 16) to reduce vocabulary. Record the mapping in metadata.  
-- **Drum tracks:** usually on channel 9 — either skip them or parse them separately with a different token vocabulary.  
-- **Polyphonic ambiguity & overlaps:** overlapping notes of the same pitch — decide how to represent (allow multiple note-on before note-off vs merge into one with longer duration).  
-- **Micro-timing vs quantization:** choose whether to keep micro-timing or aggressively quantize to grid — store your choice.  
-- **File encoding & compression:** gzip your JSON for large datasets.  
-- **Licensing/copyright:** if you intend to share a dataset, verify permissions.
+## 5. Round-trip Fidelity Assurance
 
----
-
-## 9. Suggested default configuration (starter)
-- `ppq_target`: preserve original PPQ (no resampling).  
-- `quantize_grid`: None by default; optional grid as `ppq/24` (i.e., 24 ticks per 1/4 note subdivision) if you need a fixed grid.   
-- `chord_threshold`: 3 notes.  
-- `max_simultaneous_notes_for_chord`: 8.  
-- `preserve_tempo_map`: true.  
-- `drop_meta`: only drop lyrics and sysex by default; keep tempo/time/program/cc.
-
----
-
-## 10. Validation checklist before first run
-- [ ] Confirm `miditoolkit` + `mido` versions and compatibility.  
-- [ ] Define token schema and document it (vocabulary list).  
-- [ ] Implement round-trip unit tests on a diverse set of MIDIs (different PPQs, tempos, time signatures).  
-- [ ] Implement deterministic event ordering and document it.
-- [ ] Create a small reference dataset and check file sizes (JSON vs gzipped JSON).  
-
----
-
-## Appendix A — Pros & cons of popular Python MIDI libraries
-**miditoolkit** — pros: native-tick handling, note objects, tempo/time signature parsing, built for symbolic tasks; cons: less widespread than `mido` but built on it.  
-
-**mido** — pros: low-level, battle-tested, explicit message & tick handling; cons: you need to implement higher-level note grouping yourself.  
-
-**pretty_midi** — pros: high-level music-related analysis utilities (get_tempo_changes, chroma, estimate_tempo); cons: often works in seconds and hides tick detail (be careful if you need exact tick-level round-trips).
-
----
-
-## Appendix B — Example minimal token sequence (illustrative)
-If a piece starts with a single C4 quarter note at tick 0, PPQ=480 and tempo 120bpm, tokens could look like:
-
-```
-{
-  "ppq": 480,
-  "tempo_map": [{"bpm":120, "tick":0}],
-  "tracks": [
-    {"name":"lead","type":"melody","tokens":[
-      "TEMPO_120",
-      "NOTE_ON_60",
-      "WAIT_480",
-      "NOTE_OFF_60"
-    ]}
-  ]
+### Validation Metrics
+```python
+VALIDATION_TOLERANCES = {
+    "note_start_tick": 1,           # Max 1 tick difference
+    "note_duration": 2,             # Max 2 ticks difference  
+    "velocity_bin": 1,              # Max 1 velocity bin difference
+    "missing_notes_ratio": 0.01,    # Max 1% notes missing
+    "extra_notes_ratio": 0.01,      # Max 1% extra notes
 }
 ```
 
-## Closing notes
-This design aims for clarity, determinism and round-trip fidelity while staying flexible enough to support common tokenization strategies (REMI/Compound Word) if you later move into training Transformer-based models. Start with a small, well-documented token schema and round-trip tests — then evolve toward more compact tokenizations if you need performance in model training.
+### Automated Testing Suite
+```python
+def round_trip_test(original_midi, tokenizer):
+    # Tokenize original MIDI
+    tokens = tokenizer(original_midi)
+    
+    # Detokenize back to MIDI
+    reconstructed_midi = tokenizer(tokens)
+    
+    # Compare using miditoolkit
+    metrics = compare_midi_files(original_midi, reconstructed_midi)
+    
+    return metrics, metrics_within_tolerance(metrics)
+```
+
+---
+
+## 6. Track Classification Heuristics
+
+### Melody Detection
+- **Name-based**: Contains "melody", "lead", "solo", "voice"
+- **Pattern-based**: Monophonic or light polyphony (< 3 simultaneous notes)
+- **Range-based**: Moderate pitch range (1-2 octaves)
+- **Density-based**: Moderate note density (not too sparse/dense)
+
+### Chord Detection  
+- **Name-based**: Contains "chord", "accomp", "rhythm", "pad"
+- **Pattern-based**: High polyphony (≥ 3 simultaneous notes common)
+- **Sustain-based**: Long note durations, sustained patterns
+
+### Bass Detection
+- **Name-based**: Contains "bass", "low", "bajo"
+- **Range-based**: Low pitch range (C1-C3 typical)
+- **Rhythm-based**: Rhythmic, foundational patterns
+
+---
+
+## 7. Configuration Management
+
+### Default Configuration
+```python
+DEFAULT_CONFIG = {
+    "tokenization": "REMI",
+    "pitch_range": (21, 109),
+    "beat_resolution": 4,
+    "num_velocities": 16,
+    "max_seq_length": 2048,
+    "track_classification": {
+        "chord_threshold": 3,
+        "min_notes_per_track": 10,
+        "max_empty_ratio": 0.8
+    },
+    "output": {
+        "compress_json": True,
+        "include_vocabulary": True,
+        "pretty_print": False
+    }
+}
+```
+
+### Environment-based Overrides
+```python
+# config.yaml (optional)
+tokenization: "CPWord"
+beat_resolution: 8
+output:
+  compress_json: false
+```
+
+---
+
+## 8. Project Structure
+
+```
+midi_parser/
+├── __init__.py
+├── config/
+│   ├── defaults.py
+│   └── strategies.yaml
+├── core/
+│   ├── midi_loader.py
+│   ├── tokenizer_manager.py
+│   ├── track_analyzer.py
+│   └── json_serializer.py
+├── validation/
+│   ├── round_trip.py
+│   ├── metrics.py
+│   └── quality_check.py
+├── cli/
+│   ├── batch_process.py
+│   └── single_file.py
+└── tests/
+    ├── test_tokenization.py
+    ├── test_fidelity.py
+    └── fixtures/
+```
+
+---
+
+## 9. CLI Interface
+
+### Batch Processing
+```bash
+python -m midi_parser batch \
+    --input-dir ./raw_midis \
+    --output-dir ./tokenized \
+    --tokenization REMI \
+    --config ./config.yaml \
+    --validate
+```
+
+### Single File Processing
+```bash
+python -m midi_parser single \
+    --input ./song.mid \
+    --output ./song_tokens.json \
+    --tokenization CPWord
+```
+
+### Validation Mode
+```bash
+python -m midi_parser validate \
+    --input-dir ./tokenized \
+    --threshold 0.98
+```
+
+---
+
+## 10. Quality Assurance Checklist
+
+### Pre-processing Validation
+- [ ] MIDI file integrity check
+- [ ] PPQ consistency across files
+- [ ] Tempo map extraction accuracy
+- [ ] Time signature change handling
+
+### Tokenization Validation  
+- [ ] Round-trip fidelity > 98%
+- [ ] Vocabulary coverage of all musical events
+- [ ] Track classification accuracy
+- [ ] Sequence length distribution analysis
+
+### Output Validation
+- [ ] JSON schema compliance
+- [ ] Metadata completeness
+- [ ] Token sequence integrity
+- [ ] File size optimization
+
+---
+
+## 11. Performance Considerations
+
+### Memory Management
+- Stream large MIDI files without full loading
+- Batch processing with memory limits
+- Token sequence chunking for long pieces
+
+### Processing Speed
+- Parallel track processing where possible
+- Cached tokenizer instances
+- Optimized JSON serialization
+
+### Storage Optimization
+- Gzip compression for JSON files
+- Binary token storage option
+- Metadata-only mode for analysis
+
+---
+
+## 12. Migration & Compatibility
+
+### Version 1.0 → 2.0 Migration
+```python
+def migrate_v1_to_v2(v1_json):
+    # Convert custom tokens to MidiTok integer tokens
+    # Preserve metadata structure
+    # Update schema version
+    return v2_json
+```
+
+### Backward Compatibility
+- Read both v1 and v2 JSON formats
+- Convert between tokenization strategies
+- Preserve all original metadata
+
+---
+
+## Appendix A: MidiTok Tokenization Strategies Comparison
+
+| Strategy | Vocab Size | Seq Length | Transformer Suitability | Musical Expressiveness |
+|----------|------------|------------|------------------------|------------------------|
+| **REMI** | Medium | Medium | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ |
+| **TSD** | Small | Long | ⭐⭐⭐ | ⭐⭐⭐ |
+| **Structured** | Large | Short | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
+| **CPWord** | Medium | Short | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ |
+| **Octuple** | Large | Short | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
+
+---
+
+## Appendix B: Example Token Sequences
+
+### REMI Token Example
+```
+[Bar_Start, Position_0, Tempo_120, TimeSignature_4_4, 
+ NoteOn_C4_v80, Duration_4, NoteOn_E4_v80, Duration_4, 
+ NoteOn_G4_v80, Duration_4, Bar_Start, Position_0, ...]
+```
+
+### Corresponding Integer Tokens
+```
+[120, 45, 256, 312, 678, 48, 712, 48, 745, 48, 120, 45, ...]
+```
+
+---
+
+## Closing Notes
+
+This specification leverages MidiTok's professional tokenization capabilities while maintaining the project's original goals of high fidelity and transformer compatibility. The modular design allows for easy experimentation with different tokenization strategies while ensuring consistent output format and comprehensive metadata preservation.
+
+**Key Advantages:**
+- No need to design token vocabulary from scratch
+- Proven compatibility with transformer architectures
+- Comprehensive handling of complex MIDI features
+- Active library maintenance and community support
