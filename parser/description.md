@@ -44,27 +44,30 @@ Example: `F#m-136bpm-very_cool_title.tok.json`
 {
   "version": "1.0",
   "source_file": "original_filename.mid",
+  "tokenization": "REMI",  // or another MidiTok format
   "ppq": 480,
-  "time_signatures": [{"numerator":4,"denominator":4,"tick":0}],
-  "tempo_map": [{"bpm":136.0,"tick":0}],
-  "key_signature": "F# minor",
   "tracks": [
     {
       "name": "Piano RH",
       "program": 0,
       "is_drum": false,
       "type": "melody",
-      "tokens": ["BAR_0","POS_0","NOTE_ON_60","WAIT_48","NOTE_OFF_60"]
+      "tokens": [120, 45, 678, 234, 890]  // integer tokens from MidiTok
     }
   ],
-  "global_tokens": ["TEMPO_136"]
+  "vocabulary": {  // MidiTok's token-to-meaning mapping
+    "120": "Bar_Start",
+    "45": "Position_0", 
+    "678": "NoteOn_C4_v80",
+    // etc.
+  }
 }
 ```
 
 **Token design notes:**
 - Use integer tick units to avoid rounding errors. `WAIT_{ticks}` is the recommended form.  
 - `NOTE_OFF_{pitch}` or alternatively encode durations by using a `DUR_{ticks}` token after `NOTE_ON`. Pick one style and document it.  
-- For chords use `CHORD_{p1}_{p2}_{p3}`, all over the project we'll ignore velocities and default them inside the parser in the JSON -> MIDI to default all notes at 80 velocity
+- For chords use `CHORD_{p1}_{p2}_{p3}` (declaring notes in ascending order), all over the project we'll ignore velocities and default them when processing JSON->MIDI to default all notes at 80 velocity
 
 ---
 
@@ -111,7 +114,7 @@ To guarantee the parser works both ways, you must:
 1. **Preserve all needed metadata** in the parsed file: `ppq`, `tempo_map` (list of tempo events with ticks), `time_signatures`, `instrument programs`, `channels`, `is_drum` flags.  
 2. **Use ticks as canonical time units** — store all timing as integer ticks.  
 3. **Keep the exact tempo map** (not just a single tempo).  
-4. **Record program changes and control change events** these are irrelevant, we can skip them.
+4. **Record program changes** preserved and encoded as tokens when they occur. This ensures that instrument changes within a track are captured. ignore control change events
 5. **Define and document deterministic ordering** for simultaneous events (see above).
 6. **Round-trip validation**: implement tests that compare the original MIDI and the round-tripped MIDI (tolerance for allowed differences, e.g., removed tiny timing noise if quantized, ignore program changes). Store a small suite of metrics after conversion: total notes, number of unmatched note_on/off events, percent of notes with changed start tick, mean start offset, etc.
 
@@ -121,14 +124,15 @@ To guarantee the parser works both ways, you must:
 
 ---
 
-## 6. Token vocabulary choices (design tradeoffs)
-You must decide what information your tokens carry. The most common choices are:
+## 6. Token vocabulary choices
 
-1. **Note-only tokens (pitch + durations via WAIT / NOTE_OFF):** small vocabulary, simpler, but loses velocity and expressive info.  
-2. **Note + Velocity tokens (`NOTE_ON_{pitch}_{vel}`):** keeps dynamics; vocabulary grows with velocity resolution (e.g., 32 levels of velocity is common).  
-3. **REMI-like or Compound Word approaches:** encode bar/position/velocity/grouped tokens which reduce sequence length and have shown empirical success for Transformers. If you plan to use existing tokenizers/models, consider standard formats like REMI or Compound Word as a starting point.  
+Decision: Use MidiTok with REMI tokenization
 
-If your primary goal is to train generative models that produce realistic music, consider adopting an established tokenization (or be compatible with one) — that will let you reuse existing tooling and pre-trained models.
+Why REMI?
+- Encodes bar, position, pitch, duration, velocity in a structured way
+- Proven success with transformer models
+- Handles all MIDI features automatically
+- MidiTok manages the complex token grammar
 
 ---
 
@@ -136,16 +140,11 @@ If your primary goal is to train generative models that produce realistic music,
 Split the project into small, testable modules:
 ```
 parser/
-├── __init__.py
-├── io.py                # read/write MIDI and JSON files (miditoolkit + mido)
-├── tokenizer.py         # convert events -> tokens
-├── detokenizer.py       # tokens -> events
-├── quantizer.py         # quantize timings and handle tick math
-├── heuristics.py        # track type detection, chord detection rules
-├── validators.py        # round-trip tests and event diffs
-├── config.py            # default params (ppq target, chord_threshold, velocity_bins)
-├── cli.py               # CLI for batch processing (process /processed folder)
-└── tests/               # unit tests & fixtures
+├── miditok_wrapper.py    # Wraps MidiTok with your track-based logic
+├── track_analyzer.py     # Your chord/melody detection heuristics  
+├── metadata_manager.py   # Handles your JSON schema & naming
+├── roundtrip_validator.py # Validation using MidiTok's capabilities
+└── config.py             # MidiTok configuration + your settings
 ```
 
 ---
@@ -164,8 +163,7 @@ parser/
 
 ## 9. Suggested default configuration (starter)
 - `ppq_target`: preserve original PPQ (no resampling).  
-- `quantize_grid`: None by default; optional grid as `ppq/24` (i.e., 24 ticks per 1/4 note subdivision) if you need a fixed grid.  
-- `velocity_bins`: 16 (map 0–127 into 16 bins).  
+- `quantize_grid`: None by default; optional grid as `ppq/24` (i.e., 24 ticks per 1/4 note subdivision) if you need a fixed grid.   
 - `chord_threshold`: 3 notes.  
 - `max_simultaneous_notes_for_chord`: 8.  
 - `preserve_tempo_map`: true.  
@@ -201,7 +199,7 @@ If a piece starts with a single C4 quarter note at tick 0, PPQ=480 and tempo 120
   "tracks": [
     {"name":"lead","type":"melody","tokens":[
       "TEMPO_120",
-      "NOTE_ON_60_100",
+      "NOTE_ON_60",
       "WAIT_480",
       "NOTE_OFF_60"
     ]}
