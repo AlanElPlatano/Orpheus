@@ -126,7 +126,7 @@ Example: `Cm-120bpm-REMI-sonata_no_1.json`
 ```python
 def load_and_validate_midi(file_path):
     # Load MIDI with miditoolkit
-    # Validate file integrity
+    # Assume validation (corruption, invalid notes/lengths, etc)
     # Extract metadata (PPQ, tempo map, time signatures)
     return midi_object, metadata
 ```
@@ -135,8 +135,8 @@ def load_and_validate_midi(file_path):
 ```python
 def analyze_tracks(midi_obj):
     # Apply chord/melody detection heuristics
-    # Classify tracks as: 'melody', 'chord', 'bass', 'drum', 'accompaniment'
-    # Filter out empty/invalid tracks
+    # Classify tracks as: 'melody', 'melodia', 'lead', 'chord', 'acordes', 'bass', 'bajo', etc (consider several languages)
+    # Empty or invalid tracks already deleted
     return track_metadata
 ```
 
@@ -153,7 +153,7 @@ def tokenize_midi(midi_obj, tokenizer):
 ```python
 def create_output_json(midi_path, tokens, metadata, track_info):
     # Combine all data into standardized JSON format
-    # Compress if needed (gzip optional)
+    # Compress if needed (gzip optional for very large dataset)
     return json_data
 ```
 
@@ -161,7 +161,7 @@ def create_output_json(midi_path, tokens, metadata, track_info):
 
 ## 5. Round-trip Fidelity Assurance
 
-### Validation Metrics
+### Validation Metrics for round-trip conversion
 ```python
 VALIDATION_TOLERANCES = {
     "note_start_tick": 1,           # Max 1 tick difference
@@ -192,7 +192,7 @@ def round_trip_test(original_midi, tokenizer):
 ## 6. Track Classification Heuristics
 
 ### Melody Detection
-- **Name-based**: Contains "melody", "lead", "solo", "voice"
+- **Name-based**: Contains "melody", "lead", "solo", "voice", "chord", etc
 - **Pattern-based**: Monophonic or light polyphony (< 3 simultaneous notes)
 - **Range-based**: Moderate pitch range (1-2 octaves)
 - **Density-based**: Moderate note density (not too sparse/dense)
@@ -206,6 +206,7 @@ def round_trip_test(original_midi, tokenizer):
 - **Name-based**: Contains "bass", "low", "bajo"
 - **Range-based**: Low pitch range (C1-C3 typical)
 - **Rhythm-based**: Rhythmic, foundational patterns
+- **Optional bass-removal feature**: In a preprocessing pipeline in a separate part of the project
 
 ---
 
@@ -300,62 +301,46 @@ python -m midi_parser validate \
 
 ---
 
-## 10. Quality Assurance Checklist
+## 13. Error Handling & Robustness
 
-### Pre-processing Validation
-- [ ] MIDI file integrity check
-- [ ] PPQ consistency across files
-- [ ] Tempo map extraction accuracy
-- [ ] Time signature change handling
-
-### Tokenization Validation  
-- [ ] Round-trip fidelity > 98%
-- [ ] Vocabulary coverage of all musical events
-- [ ] Track classification accuracy
-- [ ] Sequence length distribution analysis
-
-### Output Validation
-- [ ] JSON schema compliance
-- [ ] Metadata completeness
-- [ ] Token sequence integrity
-- [ ] File size optimization
-
----
-
-## 11. Performance Considerations
-
-### Memory Management
-- Stream large MIDI files without full loading
-- Batch processing with memory limits
-- Token sequence chunking for long pieces
-
-### Processing Speed
-- Parallel track processing where possible
-- Cached tokenizer instances
-- Optimized JSON serialization
-
-### Storage Optimization
-- Gzip compression for JSON files
-- Binary token storage option
-- Metadata-only mode for analysis
-
----
-
-## 12. Migration & Compatibility
-
-### Version 1.0 → 2.0 Migration
+### Graceful Failure Modes
 ```python
-def migrate_v1_to_v2(v1_json):
-    # Convert custom tokens to MidiTok integer tokens
-    # Preserve metadata structure
-    # Update schema version
-    return v2_json
+ERROR_HANDLING_STRATEGIES = {
+    "corrupted_midi": "skip",           # Skip unreadable files
+    "empty_tracks": "remove",           # Remove tracks with no notes
+    "extreme_duration": "truncate",     # Handle excessively long MIDIs
+    "unsupported_events": "filter",     # Remove non-standard MIDI events
+    "memory_overflow": "chunk",         # Process in chunks for large files
+}
 ```
 
-### Backward Compatibility
-- Read both v1 and v2 JSON formats
-- Convert between tokenization strategies
-- Preserve all original metadata
+### Recovery Mechanisms
+- **Partial Processing**: Continue processing other files if one fails
+- **Fallback Tokenization**: If REMI fails, try TSD as backup
+- **Metadata Preservation**: Always preserve metadata even if tokenization fails
+- **Logging**: Detailed error logging with context for debugging
+
+### Validation Pipeline
+```python
+def safe_process_midi(file_path, tokenizer):
+    try:
+        # Load and validate MIDI
+        midi = load_midi_with_validation(file_path)
+        
+        # Check file size and complexity
+        if midi.duration > MAX_DURATION:
+            return chunk_and_process(midi, tokenizer)
+            
+        # Tokenize with error boundaries
+        tokens = tokenizer(midi, max_seq_len=MAX_SEQ_LENGTH)
+        
+        return create_output(midi, tokens, "success")
+        
+    except MidiError as e:
+        return create_error_output(file_path, e, "midi_error")
+    except TokenizationError as e:
+        return create_error_output(file_path, e, "tokenization_error")
+```
 
 ---
 
@@ -396,3 +381,4 @@ This specification leverages MidiTok's professional tokenization capabilities wh
 - Proven compatibility with transformer architectures
 - Comprehensive handling of complex MIDI features
 - Active library maintenance and community support
+
