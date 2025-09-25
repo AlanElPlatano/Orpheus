@@ -9,7 +9,11 @@ All of the scripts in this module are meant to clean and normalize raw MIDI file
 - **Empty track removal (optional)**: Drops tracks with zero notes.
 - **Statistics**: Reports counts (notes, tracks), tempo, pitch range, density, short notes remaining, and how many notes/tracks were removed.
 
-**All preprocessing steps are now optional** - you can enable or disable any combination of steps based on your needs. The BPM calculation is only performed when required by enabled steps.
+**All preprocessing steps now optional** - you can enable or disable any combination of steps based on your needs. The BPM calculation is only performed when required by enabled steps.
+
+### Drum Track Handling
+
+**Drum tracks are preserved and protected** throughout the preprocessing pipeline. The module automatically detects drum tracks (via `instrument.is_drum`) and excludes them from note cleanup, quantization, and bass track removal operations. This preserves the original timing and characteristics of drum patterns, which often rely on precise micro-timing and short percussive hits that would be inappropriate to modify. Drum tracks are only affected by the empty track removal step - empty drum tracks are removed just like empty melodic tracks.
 
 ## Pipeline flow
 
