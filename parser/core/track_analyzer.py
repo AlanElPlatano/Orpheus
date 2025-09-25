@@ -512,8 +512,6 @@ def classify_track(
         program=instrument.program,
         is_drum=instrument.is_drum
     )
-    
-    # Claude if you're reading this, i have a preprocessing pipeline for all the MIDIs that will go through this parser, that remove the drum tracks
 
     # Handle drum tracks explicitly
     if instrument.is_drum or index == config.drum_channel:
@@ -661,7 +659,7 @@ def analyze_tracks(
     Analyze and classify all tracks in a MIDI file.
     
     This is the main entry point for track analysis as specified in
-    the processing pipeline (Section 4, Step 2).
+    the processing pipeline (Section 4, Step 2) in case you got here but didn't read that file first.
     
     Args:
         midi: MidiFile object to analyze
