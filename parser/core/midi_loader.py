@@ -11,7 +11,6 @@ from typing import Dict, Any, Optional, Tuple, List, Union
 from dataclasses import dataclass, field
 import hashlib
 
-# Core library of the parsing module
 import miditoolkit
 from miditoolkit import MidiFile
 import mido
@@ -896,7 +895,7 @@ __all__ = [
     'validate_midi_structure',
     'clean_midi_data',
     'chunk_midi_file',
-    # 3 functions used inside 'chunk_midi_file' not exported as they're only used internally
+    # 3 of the functions used inside 'chunk_midi_file' are not exported as they're only used internally
     'MidiMetadata',
     'ValidationResult',
 ]
