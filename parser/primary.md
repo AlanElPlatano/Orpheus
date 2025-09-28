@@ -258,7 +258,14 @@ midi_parser/
 │   ├── track_analyzer.py
 │   └── json_serializer.py
 ├── validation/
-│   ├── round_trip.py
+│   ├── __init__.py
+│   ├── batch_processor.py
+│   ├── midi_comparator.py
+│   ├── note_matcher.py
+│   ├── report_generator.py
+│   ├── round_trip_validator.py
+│   ├── tolerance_checker.py
+│   ├── validation_metrics.py
 │   ├── metrics.py
 │   └── quality_check.py
 ├── cli/
