@@ -262,7 +262,7 @@ class AdaptiveThresholdManager:
             "timing_strictness": 1.0,
             "pitch_strictness": 1.0,
             "dynamics_strictness": 0.3,
-            "description": "Orchestral music needs excellent dynamic range"
+            "description": "Custom preset to be used for developer use"
         }
     }
     

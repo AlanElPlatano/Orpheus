@@ -195,7 +195,15 @@ class MusicalFeatureAnalyzer:
         for track in reconstructed_tracks:
             recon_pitches.extend([note.pitch for note in track.notes])
         
-        if not orig_pitches or not recon_pitches:
+        if not orig_pitches:
+            logger.warning("No pitches in original MIDI")
+            return analysis
+        if not recon_pitches:
+            logger.warning("No pitches in reconstructed MIDI")
+            return analysis
+        if len(orig_pitches) < 10 or len(recon_pitches) < 10:
+            logger.warning("Insufficient pitch data for analysis")
+            analysis.distribution_similarity = 0.5  # Neutral score
             return analysis
         
         # Calculate distributions

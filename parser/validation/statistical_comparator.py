@@ -303,53 +303,64 @@ class StatisticalComparator:
         for feature_name in ['pitches', 'velocities', 'durations', 'intervals']:
             orig_data = orig_features.get(feature_name, np.array([]))
             recon_data = recon_features.get(feature_name, np.array([]))
+
+            # Scipy functions might crash with insufficient data in any of the arrays
+            # Checking this also prevents divisions by zero
+            if len(orig_data) < 10 or len(recon_data) < 10:
+                logger.warning(f"Insufficient data for {feature_name} comparison")
+                return DistributionComparison()  # Return default
             
             comparison = DistributionComparison()
+
+            # Kolmogorov-Smirnov test
+            ks_stat, ks_pval = ks_2samp(orig_data, recon_data)
+            comparison.ks_statistic = ks_stat
+            comparison.ks_pvalue = ks_pval
+            comparison.distributions_identical = ks_pval > self.alpha
             
-            if len(orig_data) > 0 and len(recon_data) > 0:
-                # Kolmogorov-Smirnov test
-                ks_stat, ks_pval = ks_2samp(orig_data, recon_data)
-                comparison.ks_statistic = ks_stat
-                comparison.ks_pvalue = ks_pval
-                comparison.distributions_identical = ks_pval > self.alpha
-                
-                # Wasserstein distance
-                comparison.wasserstein_distance = stats.wasserstein_distance(
+            # Wasserstein distance
+            comparison.wasserstein_distance = stats.wasserstein_distance(
+                orig_data, recon_data
+            )
+            
+            if detailed:
+                # Jensen-Shannon divergence
+                comparison.jensen_shannon_divergence = self._calculate_js_divergence(
                     orig_data, recon_data
                 )
                 
-                if detailed:
-                    # Jensen-Shannon divergence
-                    comparison.jensen_shannon_divergence = self._calculate_js_divergence(
-                        orig_data, recon_data
-                    )
-                    
-                    # Hellinger distance
-                    comparison.hellinger_distance = self._calculate_hellinger_distance(
-                        orig_data, recon_data
-                    )
-                    
-                    # Total variation distance
-                    comparison.total_variation_distance = self._calculate_tv_distance(
-                        orig_data, recon_data
-                    )
-                    
-                    # Chi-square test (for categorical data)
-                    if feature_name in ['pitches', 'velocities']:
-                        chi2_stat, chi2_pval = self._perform_chi_square_test(
-                            orig_data, recon_data
-                        )
-                        comparison.chi_square_statistic = chi2_stat
-                        comparison.chi_square_pvalue = chi2_pval
-                
-                # Calculate overall distribution similarity
-                comparison.distribution_similarity_score = self._calculate_distribution_similarity(
-                    comparison
+                # Hellinger distance
+                comparison.hellinger_distance = self._calculate_hellinger_distance(
+                    orig_data, recon_data
                 )
+                
+                # Total variation distance
+                comparison.total_variation_distance = self._calculate_tv_distance(
+                    orig_data, recon_data
+                )
+                
+                # Chi-square test (for categorical data)
+                if feature_name in ['pitches', 'velocities']:
+                    chi2_stat, chi2_pval = self._perform_chi_square_test(
+                        orig_data, recon_data
+                    )
+                    comparison.chi_square_statistic = chi2_stat
+                    comparison.chi_square_pvalue = chi2_pval
             
+            # Calculate overall distribution similarity
+            comparison.distribution_similarity_score = self._calculate_distribution_similarity(
+                comparison
+            )
+            
+            # Put the result of the comparison in the array
             comparisons[feature_name] = comparison
         
         return comparisons
+
+    # Prevents division by zero
+    def safe_divide(numerator, denominator, default=0.0):
+        """Safely divide with fallback for zero denominator."""
+        return numerator / denominator if denominator != 0 else default
     
     def _analyze_correlations(
         self,
@@ -463,7 +474,7 @@ class StatisticalComparator:
                     u_stat, p_val = mannwhitneyu(orig_data, recon_data, alternative='two-sided')
                     setattr(tests, attr_name, (u_stat, p_val))
                 except Exception as e:
-                    logger.debug(f"Mann-Whitney test failed for {feature_name}: {e}")
+                    logger.warning(f"Mann-Whitney test failed for {feature_name}: {e}")
         
         # Paired tests (for matched samples)
         if len(orig_features.get('pitches', [])) > 0 and len(recon_features.get('pitches', [])) > 0:
@@ -478,7 +489,7 @@ class StatisticalComparator:
                     )
                     tests.wilcoxon_signed_rank = (w_stat, p_val)
                 except Exception as e:
-                    logger.debug(f"Wilcoxon test failed: {e}")
+                    logger.warning(f"Wilcoxon test failed: {e}")
                 
                 # Paired t-test
                 try:
@@ -488,7 +499,7 @@ class StatisticalComparator:
                     )
                     tests.paired_t_test = (t_stat, p_val)
                 except Exception as e:
-                    logger.debug(f"Paired t-test failed: {e}")
+                    logger.warning(f"Paired t-test failed: {e}")
         
         # F-test for variance
         if len(orig_features.get('pitches', [])) > 1 and len(recon_features.get('pitches', [])) > 1:
@@ -602,7 +613,7 @@ class StatisticalComparator:
                 analysis.local_outlier_factor = np.mean(lof.negative_outlier_factor_)
                 
         except ImportError:
-            logger.debug("sklearn not available for advanced outlier detection")
+            logger.warning("sklearn not available for advanced outlier detection")
         
         return analysis
     
@@ -748,7 +759,7 @@ class StatisticalComparator:
             chi2_stat, p_val, _, _ = chi2_contingency(contingency)
             return chi2_stat, p_val
         except Exception as e:
-            logger.debug(f"Chi-square test failed: {e}")
+            logger.warning(f"Chi-square test failed: {e}")
             return 0.0, 1.0
     
     def _calculate_distribution_similarity(self, comparison: DistributionComparison) -> float:
@@ -825,9 +836,9 @@ class StatisticalComparator:
                     return mi / max_entropy
                 
         except ImportError:
-            logger.debug("sklearn not available for mutual information calculation")
+            logger.warning("sklearn not available for mutual information calculation")
         except Exception as e:
-            logger.debug(f"Mutual information calculation failed: {e}")
+            logger.warning(f"Mutual information calculation failed: {e}")
         
         return 0.0
     
@@ -968,7 +979,7 @@ class StatisticalComparator:
             return max(0.0, min(1.0, slope_similarity))
             
         except Exception as e:
-            logger.debug(f"Trend calculation failed: {e}")
+            logger.warning(f"Trend calculation failed: {e}")
             return 0.5
     
     def _calculate_dtw_distance(self, signal1: np.ndarray, signal2: np.ndarray) -> float:
