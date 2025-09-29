@@ -5,3 +5,5 @@ scipy>=1.10
 mido>=1.2.10
 miditok>=2.1.0
 yaml>=6.0.3
+scipy>=1.15.3
+sklearn>=1.7.2

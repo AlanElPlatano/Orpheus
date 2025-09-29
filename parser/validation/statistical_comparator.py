@@ -8,16 +8,14 @@ correlation analysis, statistical significance testing, and outlier detection.
 
 import logging
 import statistics
-from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple, Any, Union
+from typing import Dict, List, Optional, Tuple, Any
 import numpy as np
-from scipy import stats, spatial
+from scipy import stats
 from scipy.stats import ks_2samp, mannwhitneyu, chi2_contingency, pearsonr, spearmanr
-from miditoolkit import MidiFile, Instrument, Note
+from miditoolkit import MidiFile
 
-from parser.validation.validation_metrics import RoundTripMetrics, TrackComparison
-from parser.validation.midi_comparator import MidiComparator
+from parser.validation.validation_metrics import RoundTripMetrics
 
 logger = logging.getLogger(__name__)
 

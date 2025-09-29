@@ -8,7 +8,7 @@ edge cases in the comparison process.
 
 import logging
 from collections import defaultdict
-from typing import Dict, List, Optional, Set, Union, Tuple
+from typing import Dict, List, Optional, Set, Union
 from miditoolkit import Note
 from .validation_metrics import NoteComparison, DEFAULT_VALIDATION_TOLERANCES
 
