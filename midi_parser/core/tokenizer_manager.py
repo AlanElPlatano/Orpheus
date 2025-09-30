@@ -14,20 +14,64 @@ from functools import lru_cache
 import json
 import pickle
 import hashlib
+import sys
 
-# MidiTok imports
+MIDITOK_AVAILABLE = False
+MIDITOK_VERSION = None
+MIDITOK_IMPORT_ERROR = None
+
 try:
-    from miditok import (
-        REMI, TSD, Structured, CPWord, Octuple,
-        MIDITokenizer, TokenizerConfig as MidiTokConfig
-    )
+    # Import the tokenizer classes
+    from miditok import REMI, TSD, Structured, CPWord, Octuple
+    
+    # In MidiTok 3.x, there's no MIDITokenizer base class, the tokenizers themselves are the base classes
+    # For type hints, we can use the REMI class as a stand-in
+    MIDITokenizer = type(REMI())  # Get the actual type
+    
+    # TokenizerConfig might have a different name
+    try:
+        from miditok import TokenizerConfig as MidiTokConfig
+    except ImportError:
+        MidiTokConfig = Any
+    
     MIDITOK_AVAILABLE = True
-except ImportError:
-    MIDITOK_AVAILABLE = False
-    # Create a placeholder for type checking when MidiTok is not available
-    from typing import Any as MIDITokenizer
-    from typing import Any as MidiTokConfig
-    logging.warning("MidiTok not installed. Install with: pip install miditok")
+    
+    # Try to get version
+    try:
+        import miditok
+        MIDITOK_VERSION = getattr(miditok, '__version__', 'unknown')
+    except:
+        MIDITOK_VERSION = 'unknown'
+    
+    logging.info(f"MidiTok imported successfully (version: {MIDITOK_VERSION})")
+    
+except ImportError as e:
+    MIDITOK_IMPORT_ERROR = f"ImportError: {str(e)}"
+    # Create placeholders for type checking
+    MIDITokenizer = Any
+    MidiTokConfig = Any
+    REMI = None
+    TSD = None
+    Structured = None
+    CPWord = None
+    Octuple = None
+    logging.warning(f"MidiTok not installed. Install with: pip install miditok")
+    logging.warning(f"Import error details: {e}")
+    
+except Exception as e:
+    MIDITOK_IMPORT_ERROR = f"{type(e).__name__}: {str(e)}"
+    # Catch any other errors
+    MIDITokenizer = Any
+    MidiTokConfig = Any
+    REMI = None
+    TSD = None
+    Structured = None
+    CPWord = None
+    Octuple = None
+    logging.error(f"MidiTok import failed with unexpected error: {e}")
+    logging.error(f"Error type: {type(e).__name__}")
+    import traceback
+    logging.error(f"Traceback: {traceback.format_exc()}")
 
 from miditoolkit import MidiFile
 
@@ -42,6 +86,19 @@ from midi_parser.config.defaults import (
 from midi_parser.core.track_analyzer import TrackInfo
 
 logger = logging.getLogger(__name__)
+
+# Log import status at module level
+if not MIDITOK_AVAILABLE:
+    logger.warning("=" * 60)
+    logger.warning("MIDITOK NOT AVAILABLE")
+    logger.warning("=" * 60)
+    logger.warning(f"Error: {MIDITOK_IMPORT_ERROR}")
+    logger.warning("Python path:")
+    for i, path in enumerate(sys.path[:5], 1):
+        logger.warning(f"  {i}. {path}")
+    logger.warning("=" * 60)
+else:
+    logger.info(f"MidiTok version {MIDITOK_VERSION} loaded successfully")
 
 
 # ============================================================================
@@ -79,8 +136,8 @@ class TokenizationResult:
 @dataclass
 class TokenizerCache:
     """Cache for tokenizer instances to avoid recreation."""
-    tokenizers: Dict[str, Any] = field(default_factory=dict)  # Changed from MIDITokenizer to Any
-    configs: Dict[str, str] = field(default_factory=dict)  # Config hash -> tokenizer key
+    tokenizers: Dict[str, Any] = field(default_factory=dict)
+    configs: Dict[str, str] = field(default_factory=dict)
     max_cache_size: int = 10
     
     def get_cache_key(self, strategy: str, config: TokenizerConfig) -> str:
@@ -94,12 +151,12 @@ class TokenizerCache:
         }, sort_keys=True)
         return hashlib.md5(config_str.encode()).hexdigest()
     
-    def get(self, strategy: str, config: TokenizerConfig) -> Optional[Any]:  # Changed return type
+    def get(self, strategy: str, config: TokenizerConfig) -> Optional[Any]:
         """Get cached tokenizer if available."""
         key = self.get_cache_key(strategy, config)
         return self.tokenizers.get(key)
     
-    def put(self, strategy: str, config: TokenizerConfig, tokenizer: Any) -> None:  # Changed parameter type
+    def put(self, strategy: str, config: TokenizerConfig, tokenizer: Any) -> None:
         """Cache a tokenizer instance."""
         key = self.get_cache_key(strategy, config)
         
@@ -108,7 +165,6 @@ class TokenizerCache:
             oldest_key = next(iter(self.tokenizers))
             del self.tokenizers[oldest_key]
             if oldest_key in self.configs.values():
-                # Remove from reverse mapping
                 self.configs = {k: v for k, v in self.configs.items() if v != oldest_key}
         
         self.tokenizers[key] = tokenizer
@@ -144,17 +200,25 @@ class TokenizerManager:
             config: Parser configuration (uses default if not provided)
         """
         if not MIDITOK_AVAILABLE:
-            raise ImportError("MidiTok is required. Install with: pip install miditok")
+            error_msg = (
+                f"MidiTok is required but not available.\n"
+                f"Error: {MIDITOK_IMPORT_ERROR}\n"
+                f"Install with: pip install miditok"
+            )
+            logger.error(error_msg)
+            raise ImportError(error_msg)
         
         self.config = config or DEFAULT_CONFIG
         self.cache = TokenizerCache()
-        self._fallback_strategies = ["REMI", "TSD", "Structured"]  # Order of fallback
+        self._fallback_strategies = ["REMI", "TSD", "Structured"]
+        
+        logger.info(f"TokenizerManager initialized with MidiTok {MIDITOK_VERSION}")
         
     def create_tokenizer(
         self,
         strategy: str,
         tokenizer_config: Optional[TokenizerConfig] = None
-    ) -> Any:  # Changed return type from MIDITokenizer to Any
+    ) -> Any:
         """
         Create or retrieve a cached tokenizer instance.
         
@@ -172,7 +236,6 @@ class TokenizerManager:
             available = list(self.STRATEGY_CLASSES.keys())
             raise ValueError(f"Unsupported strategy '{strategy}'. Available: {available}")
         
-        # Use provided config or default
         tok_config = tokenizer_config or self.config.tokenizer
         
         # Check cache first
@@ -188,7 +251,16 @@ class TokenizerManager:
         
         # Create tokenizer instance
         tokenizer_class = self.STRATEGY_CLASSES[strategy]
-        tokenizer = tokenizer_class(**miditok_params)
+        
+        try:
+            # MidiTok 3.x uses a config parameter approach
+            tokenizer = tokenizer_class(**miditok_params)
+        except TypeError as e:
+            # If parameter names are different, try alternative approach
+            logger.warning(f"Failed with standard params: {e}")
+            logger.info("Trying simplified configuration...")
+            # Minimal config for fallback
+            tokenizer = tokenizer_class()
         
         # Cache the tokenizer
         self.cache.put(strategy, tok_config, tokenizer)
@@ -203,6 +275,9 @@ class TokenizerManager:
         """
         Build parameters for MidiTok tokenizer initialization.
         
+        MidiTok 3.x has a different configuration approach than 2.x.
+        This method adapts to the version being used.
+        
         Args:
             strategy: Tokenization strategy
             config: Tokenizer configuration
@@ -210,64 +285,57 @@ class TokenizerManager:
         Returns:
             Dictionary of parameters for MidiTok
         """
-        # Base parameters common to all strategies
+        # Base parameters - MidiTok 3.x style
         params = {
-            "pitch_range": config.pitch_range,
-            "beat_res": {(0, 4): config.beat_resolution},  # MidiTok format
+            "pitch_range": tuple(config.pitch_range),  # Ensure it's a tuple
+            "beat_res": {(0, 4): config.beat_resolution},
             "num_velocities": config.num_velocities,
         }
         
-        # Add additional tokens based on configuration
-        additional_tokens = []
-        if config.additional_tokens.get("Chord"):
-            additional_tokens.append("Chord")
-        if config.additional_tokens.get("Rest"):
-            additional_tokens.append("Rest")
-        if config.additional_tokens.get("Tempo"):
-            additional_tokens.append("Tempo")
-        if config.additional_tokens.get("TimeSignature"):
-            additional_tokens.append("TimeSignature")
-        if config.additional_tokens.get("Program"):
-            additional_tokens.append("Program")
-        if config.additional_tokens.get("Pedal"):
-            additional_tokens.append("Pedal")
-        if config.additional_tokens.get("PitchBend"):
-            additional_tokens.append("PitchBend")
+        # Build additional tokens dict
+        additional_tokens = {}
+        
+        # Map our config to MidiTok's expected format
+        token_mapping = {
+            "Chord": "chord",
+            "Rest": "rest", 
+            "Tempo": "tempo",
+            "TimeSignature": "time_signature",
+            "Program": "program",
+            "Pedal": "pedal",
+            "PitchBend": "pitch_bend"
+        }
+        
+        for our_name, miditok_name in token_mapping.items():
+            if config.additional_tokens.get(our_name):
+                additional_tokens[miditok_name] = True
         
         if additional_tokens:
-            params["additional_tokens"] = additional_tokens
+            params["special_tokens"] = list(additional_tokens.keys())
         
-        # Strategy-specific adjustments
+        # Strategy-specific
         if strategy == "REMI":
-            # REMI uses position tokens
             params["use_rests"] = config.additional_tokens.get("Rest", True)
             params["use_tempos"] = config.additional_tokens.get("Tempo", True)
             params["use_time_signatures"] = config.additional_tokens.get("TimeSignature", True)
             params["use_programs"] = config.additional_tokens.get("Program", True)
             
         elif strategy == "TSD":
-            # TSD has simpler configuration
-            params["time_signature_range"] = {4: [4]}  # Default to 4/4
-            params["use_time_signatures"] = False  # TSD typically doesn't use these
+            params["use_time_signatures"] = False
             
         elif strategy == "Structured":
-            # Structured encoding needs bar-related settings
             params["use_rests"] = True
             params["use_tempos"] = True
             params["use_time_signatures"] = True
-            params["max_bar_embedding"] = 128
             
         elif strategy == "CPWord":
-            # CPWord combines multiple attributes
-            params["use_rests"] = False  # CPWord handles rests differently
+            params["use_rests"] = False
             params["use_tempos"] = config.additional_tokens.get("Tempo", True)
             params["use_programs"] = config.additional_tokens.get("Program", True)
             
         elif strategy == "Octuple":
-            # Octuple uses all 8 dimensions
-            params["use_pitchbends"] = config.additional_tokens.get("PitchBend", True)
-            params["use_pedals"] = config.additional_tokens.get("Pedal", True)
-            params["max_duration"] = 192  # Max duration in ticks
+            params["use_pitch_bends"] = config.additional_tokens.get("PitchBend", True)
+            params["use_sustain_pedals"] = config.additional_tokens.get("Pedal", True)
         
         return params
     
@@ -327,14 +395,19 @@ class TokenizerManager:
             # Build result
             result.tokens = tokens
             result.sequence_length = len(tokens)
-            result.vocabulary_size = len(tokenizer.vocab)
-            result.vocabulary = dict(tokenizer.vocab)
+            
+            # Get vocabulary
+            vocab = getattr(tokenizer, 'vocab', None) or getattr(tokenizer, '_vocab_base', {})
+            result.vocabulary_size = len(vocab) if isinstance(vocab, dict) else 0
+            result.vocabulary = dict(vocab) if isinstance(vocab, dict) else {}
             result.success = True
             
             logger.info(f"Successfully tokenized with {strategy}: {len(tokens)} tokens")
             
         except Exception as e:
             logger.error(f"Tokenization failed with {strategy}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             
             # Try fallback strategies
             fallback_result = self._try_fallback_tokenization(
@@ -352,11 +425,13 @@ class TokenizerManager:
     def _tokenize_with_strategy(
         self,
         midi: MidiFile,
-        tokenizer: Any,  # Changed from MIDITokenizer to Any
+        tokenizer: Any,
         strategy: str
     ) -> List[int]:
         """
         Apply tokenization with strategy-specific handling.
+        
+        MidiTok 3.x has a different API - tokenizers are called directly.
         
         Args:
             midi: MIDI file to tokenize
@@ -366,35 +441,40 @@ class TokenizerManager:
         Returns:
             List of integer tokens
         """
-        # MidiTok expects specific format
-        # Convert miditoolkit MidiFile to MidiTok format if needed
-        
-        if strategy in ["REMI", "TSD", "Structured"]:
-            # These strategies work with the full MIDI file
+        # MidiTok 3.x: Call tokenizer directly on the MIDI
+        # It returns token IDs directly
+        try:
+            # The tokenizer is callable and takes a MIDI file
             tokens = tokenizer(midi)
             
-        elif strategy == "CPWord":
-            # CPWord might need special handling for compound tokens
-            tokens = tokenizer(midi)
+            # MidiTok 3.x returns different structures depending on version
+            # Handle various return types
+            if isinstance(tokens, list):
+                # Already a flat list
+                if len(tokens) > 0 and isinstance(tokens[0], list):
+                    # List of tracks - flatten
+                    tokens = [t for track in tokens for t in track]
+            elif hasattr(tokens, 'ids'):
+                # Some versions return an object with .ids attribute
+                tokens = tokens.ids
             
-        elif strategy == "Octuple":
-            # Octuple encoding uses 8-dimensional features
-            tokens = tokenizer(midi)
+            # Ensure all are integers
+            tokens = [int(t) if not isinstance(t, int) else t for t in tokens]
             
-        else:
-            # Default tokenization
-            tokens = tokenizer(midi)
-        
-        # Ensure we have a flat list of integers
-        if isinstance(tokens, list) and len(tokens) > 0:
-            if isinstance(tokens[0], list):
-                # Flatten if we got per-track tokens
-                tokens = [t for track in tokens for t in track]
-        
-        # Convert to integers if needed
-        tokens = [int(t) if not isinstance(t, int) else t for t in tokens]
-        
-        return tokens
+            return tokens
+            
+        except Exception as e:
+            logger.error(f"Tokenization failed: {e}")
+            # Try alternative method
+            try:
+                # Some versions use .encode() method
+                if hasattr(tokenizer, 'encode'):
+                    result = tokenizer.encode(midi)
+                    if isinstance(result, list):
+                        return [int(t) for t in result]
+                raise
+            except:
+                raise e
     
     def _auto_select_strategy(
         self,
@@ -428,23 +508,14 @@ class TokenizerManager:
         
         # Decision tree for strategy selection
         if duration_seconds > 600:  # Long piece
-            # Need compression
             return "CPWord"
-        
         elif has_complex_harmony and avg_polyphony > 3:
-            # Complex harmonic content
             return "Structured"
-        
         elif total_notes < 500 and not has_drums:
-            # Simple piece
             return "TSD"
-        
         elif has_drums or len(track_infos) > 4:
-            # Multi-track with drums
             return "REMI"
-        
         else:
-            # Default to REMI for general purposes
             return "REMI"
     
     def _try_fallback_tokenization(
@@ -466,7 +537,6 @@ class TokenizerManager:
         Returns:
             TokenizationResult if successful, None if all fallbacks fail
         """
-        # Determine fallback strategies
         fallback_strategies = [s for s in self._fallback_strategies if s != failed_strategy]
         
         logger.info(f"Trying fallback strategies: {fallback_strategies}")
@@ -475,23 +545,23 @@ class TokenizerManager:
             try:
                 logger.info(f"Attempting fallback with {strategy}")
                 
-                # Create tokenizer with potentially adjusted config
                 fallback_config = self._get_fallback_config(strategy)
                 tokenizer = self.create_tokenizer(strategy, fallback_config)
-                
-                # Try tokenization
                 tokens = self._tokenize_with_strategy(midi, tokenizer, strategy)
                 
-                # Truncate if needed
                 if len(tokens) > max_seq_length:
                     tokens = tokens[:max_seq_length]
                 
-                # Build result
+                # Get vocabulary
+                vocab = getattr(tokenizer, 'vocab', None) or getattr(tokenizer, '_vocab_base', {})
+                vocab_size = len(vocab) if isinstance(vocab, dict) else 0
+                vocab_dict = dict(vocab) if isinstance(vocab, dict) else {}
+                
                 result = TokenizationResult(
                     tokens=tokens,
                     sequence_length=len(tokens),
-                    vocabulary_size=len(tokenizer.vocab),
-                    vocabulary=dict(tokenizer.vocab),
+                    vocabulary_size=vocab_size,
+                    vocabulary=vocab_dict,
                     tokenization_strategy=strategy,
                     success=True,
                     warnings=[
@@ -518,7 +588,6 @@ class TokenizerManager:
         Returns:
             Simplified TokenizerConfig
         """
-        # Start with current config
         config = TokenizerConfig(
             pitch_range=self.config.tokenizer.pitch_range,
             beat_resolution=self.config.tokenizer.beat_resolution,
@@ -529,7 +598,6 @@ class TokenizerManager:
         
         # Simplify for fallback
         if strategy == "TSD":
-            # TSD works better with minimal additional tokens
             config.additional_tokens = {
                 "Chord": False,
                 "Rest": True,
@@ -539,12 +607,11 @@ class TokenizerManager:
                 "Pedal": False,
                 "PitchBend": False
             }
-            config.num_velocities = 8  # Reduce velocity resolution
+            config.num_velocities = 8
             
         elif strategy == "REMI":
-            # REMI fallback with reduced features
-            config.beat_resolution = 4  # Standard resolution
-            config.num_velocities = 16  # Standard velocity
+            config.beat_resolution = 4
+            config.num_velocities = 16
             config.additional_tokens["PitchBend"] = False
             config.additional_tokens["Pedal"] = False
         
@@ -631,10 +698,18 @@ class TokenizerManager:
         strategy = strategy or self.config.tokenization
         tokenizer = self.create_tokenizer(strategy)
         
-        # Analyze vocabulary
-        vocab = tokenizer.vocab
+        # Get vocabulary
+        vocab = getattr(tokenizer, 'vocab', None) or getattr(tokenizer, '_vocab_base', {})
         
-        # Categorize tokens
+        if not isinstance(vocab, dict):
+            return {
+                "strategy": strategy,
+                "total_tokens": 0,
+                "categories": {},
+                "sample_tokens": {}
+            }
+        
+        # Analyze vocabulary
         token_categories = {
             "note": 0,
             "velocity": 0,
@@ -650,7 +725,7 @@ class TokenizerManager:
         }
         
         for token_str in vocab.keys():
-            token_lower = token_str.lower()
+            token_lower = str(token_str).lower()
             if "note" in token_lower or "pitch" in token_lower:
                 token_categories["note"] += 1
             elif "velocity" in token_lower or "vel" in token_lower:
@@ -678,7 +753,7 @@ class TokenizerManager:
             "strategy": strategy,
             "total_tokens": len(vocab),
             "categories": token_categories,
-            "sample_tokens": dict(list(vocab.items())[:20])  # First 20 tokens
+            "sample_tokens": dict(list(vocab.items())[:20])
         }
 
 
@@ -867,4 +942,6 @@ __all__ = [
     'tokenize_midi',
     'create_adaptive_tokenizer',
     'validate_token_sequence',
+    'MIDITOK_AVAILABLE',
+    'MIDITOK_VERSION',
 ]

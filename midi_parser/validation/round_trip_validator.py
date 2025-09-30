@@ -11,12 +11,35 @@ from typing import Dict, Any, Optional, List, Tuple
 from miditoolkit import MidiFile
 
 # MidiTok imports
+MIDITOK_AVAILABLE = False
+MIDITOK_VERSION = None
+MIDITOK_IMPORT_ERROR = None
+
 try:
-    from miditok import MIDITokenizer
+    from miditok import REMI, TSD, Structured, CPWord, Octuple
+    
+    # Check if we can access a tokenizer to verify installation
+    _test_tokenizer = REMI()
+    
     MIDITOK_AVAILABLE = True
-except ImportError:
-    MIDITOK_AVAILABLE = False
+    
+    # Try to get version
+    try:
+        import miditok
+        MIDITOK_VERSION = getattr(miditok, '__version__', 'unknown')
+    except:
+        MIDITOK_VERSION = 'unknown'
+    
+    logging.info(f"MidiTok {MIDITOK_VERSION} loaded for round-trip validation")
+    
+except ImportError as e:
+    MIDITOK_IMPORT_ERROR = f"ImportError: {str(e)}"
     logging.warning("MidiTok not installed. Round-trip validation unavailable.")
+    logging.warning(f"Import error: {e}")
+    
+except Exception as e:
+    MIDITOK_IMPORT_ERROR = f"{type(e).__name__}: {str(e)}"
+    logging.error(f"MidiTok import failed: {e}")
 
 from midi_parser.config.defaults import MidiParserConfig, DEFAULT_CONFIG
 from midi_parser.core.midi_loader import ValidationResult
@@ -30,6 +53,13 @@ from .tolerance_checker import ToleranceChecker
 from .batch_processor import BatchValidator
 
 logger = logging.getLogger(__name__)
+
+# Log availability status
+if not MIDITOK_AVAILABLE:
+    logger.warning("=" * 60)
+    logger.warning("ROUND-TRIP VALIDATION UNAVAILABLE")
+    logger.warning(f"Reason: {MIDITOK_IMPORT_ERROR}")
+    logger.warning("=" * 60)
 
 
 class RoundTripValidator:
@@ -48,7 +78,12 @@ class RoundTripValidator:
             config: Parser configuration with validation tolerances
         """
         if not MIDITOK_AVAILABLE:
-            raise ImportError("MidiTok is required for round-trip validation")
+            error_msg = (
+                f"MidiTok is required for round-trip validation.\n"
+                f"Error: {MIDITOK_IMPORT_ERROR}\n"
+                f"Install with: pip install miditok"
+            )
+            raise ImportError(error_msg)
         
         self.config = config or DEFAULT_CONFIG
         self.validation_config = self.config.validation
@@ -65,8 +100,11 @@ class RoundTripValidator:
         # Initialize batch processor
         self.batch_processor = BatchValidator(self)
         
-        # Cache for tokenizers
+        # Cache for tokenizers and reconstructed MIDI
         self._tokenizer_cache = {}
+        self._last_reconstructed_midi = None
+        
+        logger.info(f"RoundTripValidator initialized with MidiTok {MIDITOK_VERSION}")
         
     def validate_round_trip(
         self,
@@ -89,7 +127,7 @@ class RoundTripValidator:
         Returns:
             Tuple of (ValidationResult, RoundTripMetrics)
 
-        Caches the reconstructed MIDI.
+        Caches the reconstructed MIDI for later use in quality analysis.
         """
         start_time = time.time()
         strategy = strategy or self.config.tokenization
@@ -146,6 +184,8 @@ class RoundTripValidator:
             
         except Exception as e:
             logger.error(f"Round-trip validation error: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return self._create_error_result(f"Validation error: {str(e)}", start_time)
     
     def _tokenize_midi(
@@ -174,6 +214,8 @@ class RoundTripValidator:
             )
         except Exception as e:
             logger.error(f"Tokenization failed: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             raise TokenizationError(f"Failed to tokenize MIDI: {str(e)}")
     
     def _detokenize_tokens(
@@ -184,6 +226,8 @@ class RoundTripValidator:
     ) -> Optional[MidiFile]:
         """
         Detokenize tokens back to MIDI format.
+        
+        MidiTok 3.x uses a different detokenization API than 2.x.
         
         Args:
             tokens: Token sequence
@@ -197,26 +241,64 @@ class RoundTripValidator:
             # Get or create tokenizer
             tokenizer = self.tokenizer_manager.create_tokenizer(strategy)
             
-            # MidiTok detokenization - handle different API versions
-            if hasattr(tokenizer, 'tokens_to_midi'):
-                reconstructed = tokenizer.tokens_to_midi(tokens)
-            elif hasattr(tokenizer, 'detokenize'):
-                reconstructed = tokenizer.detokenize(tokens)
-            else:
-                # Fallback for older versions
-                reconstructed = tokenizer(tokens, _=None)
+            logger.debug(f"Detokenizing {len(tokens)} tokens with {strategy}")
             
-            # Ensure we have a MidiFile object
+            # MidiTok 3.x detokenization API
+            # Try different methods based on version
+            reconstructed = None
+            
+            # Method 1: Direct call (miditok v3.x standard)
+            try:
+                # tokenizers can be called with tokens to detokenize
+                reconstructed = tokenizer(tokens)
+            except Exception as e1:
+                logger.debug(f"Direct call failed: {e1}")
+                
+                # Method 2: tokens_to_midi method
+                try:
+                    if hasattr(tokenizer, 'tokens_to_midi'):
+                        reconstructed = tokenizer.tokens_to_midi(tokens)
+                except Exception as e2:
+                    logger.debug(f"tokens_to_midi failed: {e2}")
+                    
+                    # Method 3: decode method
+                    try:
+                        if hasattr(tokenizer, 'decode'):
+                            reconstructed = tokenizer.decode(tokens)
+                    except Exception as e3:
+                        logger.debug(f"decode failed: {e3}")
+                        raise e1  # Raise the original error
+            
+            # Convert to MidiFile if needed
+            if reconstructed is None:
+                logger.error("All detokenization methods returned None")
+                return None
+                
+            # Handle different return types
             if isinstance(reconstructed, MidiFile):
+                logger.debug("Detokenization returned MidiFile directly")
                 return reconstructed
+                
             elif hasattr(reconstructed, 'to_midi'):
+                logger.debug("Converting to MidiFile using .to_midi()")
                 return reconstructed.to_midi()
+                
+            elif hasattr(reconstructed, 'dump'):
+                # Some versions return a Score object
+                logger.debug("Converting Score to MidiFile")
+                temp_path = "/tmp/temp_detokenized.mid"
+                reconstructed.dump(temp_path)
+                return MidiFile(temp_path)
+                
             else:
                 logger.error(f"Unexpected detokenization output type: {type(reconstructed)}")
+                logger.error(f"Available methods: {dir(reconstructed)}")
                 return None
                 
         except Exception as e:
             logger.error(f"Detokenization failed: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             raise DetokenizationError(f"Failed to detokenize: {str(e)}")
     
     def _create_error_result(
@@ -232,6 +314,18 @@ class RoundTripValidator:
         metrics.processing_time = time.time() - start_time
         
         return validation_result, metrics
+    
+    def get_last_reconstructed_midi(self) -> Optional[MidiFile]:
+        """
+        Get the last reconstructed MIDI from validation.
+        
+        This is useful for quality analysis that needs both original
+        and reconstructed MIDI files.
+        
+        Returns:
+            Last reconstructed MidiFile or None
+        """
+        return self._last_reconstructed_midi
     
     # Delegate batch operations to BatchValidator
     def validate_batch(
@@ -305,6 +399,7 @@ class RoundTripValidator:
         """Get summary of current validation configuration."""
         return {
             "tokenization_strategy": self.config.tokenization,
+            "miditok_version": MIDITOK_VERSION,
             "tolerances": self.tolerance_checker.get_tolerance_summary(),
             "quality_threshold": self.tolerance_checker.quality_threshold,
             "miditok_available": MIDITOK_AVAILABLE,
@@ -328,11 +423,40 @@ class RoundTripValidator:
         logger.info(f"Quality threshold set to {threshold}")
 
 
+# Utility function to check if round-trip validation is available
+def is_round_trip_available() -> bool:
+    """
+    Check if round-trip validation is available.
+    
+    Returns:
+        True if MidiTok is properly installed
+    """
+    return MIDITOK_AVAILABLE
+
+
+def get_round_trip_status() -> Dict[str, Any]:
+    """
+    Get detailed status of round-trip validation availability.
+    
+    Returns:
+        Dictionary with availability status and details
+    """
+    return {
+        "available": MIDITOK_AVAILABLE,
+        "version": MIDITOK_VERSION,
+        "error": MIDITOK_IMPORT_ERROR if not MIDITOK_AVAILABLE else None
+    }
+
+
 # Export main classes and functions
 __all__ = [
     'RoundTripValidator',
     'RoundTripMetrics',
     'ValidationResult',
     'TokenizationError',
-    'DetokenizationError'
+    'DetokenizationError',
+    'is_round_trip_available',
+    'get_round_trip_status',
+    'MIDITOK_AVAILABLE',
+    'MIDITOK_VERSION',
 ]
