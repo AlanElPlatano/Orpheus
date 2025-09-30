@@ -15,7 +15,7 @@ from scipy import stats
 from scipy.stats import ks_2samp, mannwhitneyu, chi2_contingency, pearsonr, spearmanr
 from miditoolkit import MidiFile
 
-from parser.validation.validation_metrics import RoundTripMetrics
+from ..validation.validation_metrics import RoundTripMetrics
 
 logger = logging.getLogger(__name__)
 

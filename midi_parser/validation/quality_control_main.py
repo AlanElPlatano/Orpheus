@@ -13,40 +13,40 @@ from dataclasses import dataclass, field
 
 from miditoolkit import MidiFile
 
-from midi_parser.config.defaults import MidiParserConfig, DEFAULT_CONFIG
-from midi_parser.core.midi_loader import load_midi_file, MidiMetadata
-from midi_parser.core.track_analyzer import TrackInfo, analyze_tracks
-from midi_parser.core.tokenizer_manager import TokenizationResult
-from midi_parser.core.json_serializer import validate_json_schema
+from ..config.defaults import MidiParserConfig, DEFAULT_CONFIG
+from ..core.midi_loader import load_midi_file, MidiMetadata
+from ..core.track_analyzer import TrackInfo, analyze_tracks
+from ..core.tokenizer_manager import TokenizationResult
+from ..core.json_serializer import validate_json_schema
 
 # Validation components
-from midi_parser.validation.validation_pipeline_orchestrator import (
+from ..validation.validation_pipeline_orchestrator import (
     ValidationPipelineOrchestrator,
     ValidationPipelineConfig,
     ValidationPipelineResult,
     QualityGate,
     UseCase
 )
-from midi_parser.validation.batch_validation_coordinator import (
+from ..validation.batch_validation_coordinator import (
     BatchValidationCoordinator,
     BatchConfiguration,
     BatchStatistics,
     validate_directory
 )
-from midi_parser.validation.error_recovery_manager import (
+from ..validation.error_recovery_manager import (
     ErrorRecoveryManager,
     RecoveryResult
 )
-from midi_parser.validation.quality_metrics_orchestrator import (
+from ..validation.quality_metrics_orchestrator import (
     QualityMetricsOrchestrator,
     ComprehensiveQualityMetrics
 )
-from midi_parser.validation.config_optimizer import (
+from ..validation.config_optimizer import (
     ConfigurationOptimizer,
     OptimizationGoal,
     OptimizationResult
 )
-from midi_parser.validation.validation_report_aggregator import (
+from ..validation.validation_report_aggregator import (
     ValidationReportAggregator,
     AggregateReport,
     ReportLevel,
