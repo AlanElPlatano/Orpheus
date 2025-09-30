@@ -28,7 +28,7 @@ except ImportError:
 
 from miditoolkit import MidiFile
 
-from parser.config.defaults import (
+from midi_parser.config.defaults import (
     MidiParserConfig,
     TokenizerConfig,
     DEFAULT_CONFIG,
@@ -36,7 +36,7 @@ from parser.config.defaults import (
     get_strategy_info,
     get_available_strategies
 )
-from parser.core.track_analyzer import TrackInfo
+from midi_parser.core.track_analyzer import TrackInfo
 
 logger = logging.getLogger(__name__)
 

@@ -119,7 +119,7 @@ def validate_tokenization_strategy(
     Returns:
         Dictionary with validation results and recommendations
     """
-    from parser.core.midi_loader import load_midi_file
+    from midi_parser.core.midi_loader import load_midi_file
     from .round_trip_validator import RoundTripValidator
     
     results = {
@@ -192,7 +192,7 @@ def compare_midi_files(
     Returns:
         RoundTripMetrics with comparison results
     """
-    from parser.core.midi_loader import load_midi_file
+    from midi_parser.core.midi_loader import load_midi_file
     from .midi_comparator import MidiComparator
     from .note_matcher import NoteMatcher
     from .validation_metrics import DEFAULT_VALIDATION_TOLERANCES
@@ -232,7 +232,7 @@ def round_trip_test(
     Returns:
         Tuple of (success, metrics)
     """
-    from parser.core.midi_loader import load_midi_file
+    from midi_parser.core.midi_loader import load_midi_file
     from .round_trip_validator import RoundTripValidator
     
     # Load MIDI file

@@ -15,7 +15,7 @@ import miditoolkit
 from miditoolkit import MidiFile
 import mido
 
-from parser.config.defaults import (
+from midi_parser.config.defaults import (
     MidiParserConfig,
     ProcessingConfig,
     ERROR_HANDLING_STRATEGIES,

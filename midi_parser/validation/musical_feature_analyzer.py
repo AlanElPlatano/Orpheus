@@ -13,8 +13,8 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple, Any, Set
 from miditoolkit import MidiFile, Instrument, TempoChange
 
-from parser.core.track_analyzer import TrackInfo
-from parser.validation.validation_metrics import RoundTripMetrics
+from midi_parser.core.track_analyzer import TrackInfo
+from midi_parser.validation.validation_metrics import RoundTripMetrics
 
 logger = logging.getLogger(__name__)
 

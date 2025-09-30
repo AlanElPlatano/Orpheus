@@ -13,7 +13,7 @@ from typing import Dict, Any, Optional, List, Tuple
 from enum import Enum
 from pathlib import Path
 
-from parser.config.defaults import (
+from midi_parser.config.defaults import (
     ERROR_HANDLING_STRATEGIES,
     MidiParserConfig,
     DEFAULT_CONFIG

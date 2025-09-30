@@ -17,14 +17,14 @@ from datetime import datetime
 
 from miditoolkit import MidiFile
 
-from parser.config.defaults import (
+from midi_parser.config.defaults import (
     MidiParserConfig,
     OutputConfig,
     DEFAULT_CONFIG
 )
-from parser.core.midi_loader import MidiMetadata, ValidationResult
-from parser.core.track_analyzer import TrackInfo
-from parser.core.tokenizer_manager import TokenizationResult
+from midi_parser.core.midi_loader import MidiMetadata, ValidationResult
+from midi_parser.core.track_analyzer import TrackInfo
+from midi_parser.core.tokenizer_manager import TokenizationResult
 
 logger = logging.getLogger(__name__)
 

@@ -18,10 +18,10 @@ except ImportError:
     MIDITOK_AVAILABLE = False
     logging.warning("MidiTok not installed. Round-trip validation unavailable.")
 
-from parser.config.defaults import MidiParserConfig, DEFAULT_CONFIG
-from parser.core.midi_loader import ValidationResult
-from parser.core.tokenizer_manager import TokenizerManager, TokenizationResult
-from parser.core.track_analyzer import TrackInfo
+from midi_parser.config.defaults import MidiParserConfig, DEFAULT_CONFIG
+from midi_parser.core.midi_loader import ValidationResult
+from midi_parser.core.tokenizer_manager import TokenizerManager, TokenizationResult
+from midi_parser.core.track_analyzer import TrackInfo
 
 from .validation_metrics import RoundTripMetrics, TokenizationError, DetokenizationError
 from .note_matcher import NoteMatcher

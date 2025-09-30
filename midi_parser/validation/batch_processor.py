@@ -9,7 +9,7 @@ import logging
 import time
 from typing import Dict, List, Optional, Tuple, Union
 from miditoolkit import MidiFile
-from parser.core.midi_loader import ValidationResult, extract_metadata
+from midi_parser.core.midi_loader import ValidationResult, extract_metadata
 from .validation_metrics import RoundTripMetrics
 
 logger = logging.getLogger(__name__)

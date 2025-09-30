@@ -14,7 +14,7 @@ import numpy as np
 
 from miditoolkit import MidiFile, Instrument, Note
 
-from parser.config.defaults import (
+from midi_parser.config.defaults import (
     TrackClassificationConfig,
     MidiParserConfig,
     DEFAULT_CONFIG,

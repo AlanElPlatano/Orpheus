@@ -12,17 +12,17 @@ from typing import Dict, Any, Optional, List
 from enum import Enum
 import statistics
 
-from parser.config.defaults import (
+from midi_parser.config.defaults import (
     MidiParserConfig,
     TokenizerConfig,
     ValidationConfig,
     ProcessingConfig,
     DEFAULT_CONFIG
 )
-from parser.validation.validation_metrics import RoundTripMetrics
-from parser.validation.quality_metrics_orchestrator import ComprehensiveQualityMetrics
-from parser.validation.adaptive_threshold_manager import ComplexityMetrics, ComplexityLevel
-from parser.core.track_analyzer import TrackInfo
+from midi_parser.validation.validation_metrics import RoundTripMetrics
+from midi_parser.validation.quality_metrics_orchestrator import ComprehensiveQualityMetrics
+from midi_parser.validation.adaptive_threshold_manager import ComplexityMetrics, ComplexityLevel
+from midi_parser.core.track_analyzer import TrackInfo
 
 logger = logging.getLogger(__name__)
 

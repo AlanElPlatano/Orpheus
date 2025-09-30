@@ -18,15 +18,15 @@ from collections import defaultdict
 
 from miditoolkit import MidiFile
 
-from parser.config.defaults import MidiParserConfig, ProcessingConfig, DEFAULT_CONFIG
-from parser.core.midi_loader import load_midi_file
-from parser.validation.validation_pipeline_orchestrator import (
+from midi_parser.config.defaults import MidiParserConfig, ProcessingConfig, DEFAULT_CONFIG
+from midi_parser.core.midi_loader import load_midi_file
+from midi_parser.validation.validation_pipeline_orchestrator import (
     ValidationPipelineOrchestrator,
     ValidationPipelineConfig,
     ValidationPipelineResult,
     PipelineStatus
 )
-from parser.validation.error_recovery_manager import ErrorRecoveryManager
+from midi_parser.validation.error_recovery_manager import ErrorRecoveryManager
 
 logger = logging.getLogger(__name__)
 

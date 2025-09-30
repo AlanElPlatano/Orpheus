@@ -12,9 +12,9 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any
 from enum import Enum
 
-from parser.config.defaults import ValidationConfig
-from parser.core.track_analyzer import TrackInfo
-from parser.core.midi_loader import MidiMetadata
+from midi_parser.config.defaults import ValidationConfig
+from midi_parser.core.track_analyzer import TrackInfo
+from midi_parser.core.midi_loader import MidiMetadata
 
 logger = logging.getLogger(__name__)
 

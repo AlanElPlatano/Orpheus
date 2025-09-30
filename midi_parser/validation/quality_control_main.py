@@ -13,40 +13,40 @@ from dataclasses import dataclass, field
 
 from miditoolkit import MidiFile
 
-from parser.config.defaults import MidiParserConfig, DEFAULT_CONFIG
-from parser.core.midi_loader import load_midi_file, MidiMetadata
-from parser.core.track_analyzer import TrackInfo, analyze_tracks
-from ..core.tokenizer_manager import TokenizationResult
-from parser.core.json_serializer import validate_json_schema
+from midi_parser.config.defaults import MidiParserConfig, DEFAULT_CONFIG
+from midi_parser.core.midi_loader import load_midi_file, MidiMetadata
+from midi_parser.core.track_analyzer import TrackInfo, analyze_tracks
+from midi_parser.core.tokenizer_manager import TokenizationResult
+from midi_parser.core.json_serializer import validate_json_schema
 
 # Validation components
-from parser.validation.validation_pipeline_orchestrator import (
+from midi_parser.validation.validation_pipeline_orchestrator import (
     ValidationPipelineOrchestrator,
     ValidationPipelineConfig,
     ValidationPipelineResult,
     QualityGate,
     UseCase
 )
-from parser.validation.batch_validation_coordinator import (
+from midi_parser.validation.batch_validation_coordinator import (
     BatchValidationCoordinator,
     BatchConfiguration,
     BatchStatistics,
     validate_directory
 )
-from parser.validation.error_recovery_manager import (
+from midi_parser.validation.error_recovery_manager import (
     ErrorRecoveryManager,
     RecoveryResult
 )
-from parser.validation.quality_metrics_orchestrator import (
+from midi_parser.validation.quality_metrics_orchestrator import (
     QualityMetricsOrchestrator,
     ComprehensiveQualityMetrics
 )
-from parser.validation.config_optimizer import (
+from midi_parser.validation.config_optimizer import (
     ConfigurationOptimizer,
     OptimizationGoal,
     OptimizationResult
 )
-from parser.validation.validation_report_aggregator import (
+from midi_parser.validation.validation_report_aggregator import (
     ValidationReportAggregator,
     AggregateReport,
     ReportLevel,

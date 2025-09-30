@@ -7,8 +7,8 @@ pass/fail status based on configurable quality criteria.
 
 import logging
 from typing import Dict, Union, Optional
-from parser.core.midi_loader import ValidationResult
-from parser.config.defaults import ValidationConfig
+from midi_parser.core.midi_loader import ValidationResult
+from midi_parser.config.defaults import ValidationConfig
 from .validation_metrics import RoundTripMetrics, DEFAULT_VALIDATION_TOLERANCES
 
 logger = logging.getLogger(__name__)

@@ -13,8 +13,8 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple, Any, Set
 import numpy as np
 
-from parser.core.tokenizer_manager import TokenizationResult
-from parser.config.defaults import TokenizerConfig
+from midi_parser.core.tokenizer_manager import TokenizationResult
+from midi_parser.config.defaults import TokenizerConfig
 
 logger = logging.getLogger(__name__)
 

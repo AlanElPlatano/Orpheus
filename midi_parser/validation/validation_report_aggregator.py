@@ -16,10 +16,10 @@ from enum import Enum
 from collections import defaultdict, Counter
 import statistics
 
-from parser.config.defaults import MidiParserConfig, DEFAULT_CONFIG
-from parser.validation.validation_pipeline_orchestrator import ValidationPipelineResult
-from parser.validation.batch_validation_coordinator import BatchStatistics
-from parser.validation.report_generator import generate_validation_report
+from midi_parser.config.defaults import MidiParserConfig, DEFAULT_CONFIG
+from midi_parser.validation.validation_pipeline_orchestrator import ValidationPipelineResult
+from midi_parser.validation.batch_validation_coordinator import BatchStatistics
+from midi_parser.validation.report_generator import generate_validation_report
 
 logger = logging.getLogger(__name__)
 

@@ -15,14 +15,14 @@ from pathlib import Path
 
 from miditoolkit import MidiFile
 
-from parser.config.defaults import MidiParserConfig, DEFAULT_CONFIG
-from parser.core.midi_loader import MidiMetadata, ValidationResult, load_and_validate_midi
-from parser.core.track_analyzer import TrackInfo, analyze_tracks
-from parser.core.tokenizer_manager import TokenizationResult, tokenize_midi
+from midi_parser.config.defaults import MidiParserConfig, DEFAULT_CONFIG
+from midi_parser.core.midi_loader import MidiMetadata, ValidationResult, load_and_validate_midi
+from midi_parser.core.track_analyzer import TrackInfo, analyze_tracks
+from midi_parser.core.tokenizer_manager import TokenizationResult, tokenize_midi
 
-from parser.validation.round_trip_validator import RoundTripValidator
-from parser.validation.validation_metrics import RoundTripMetrics
-from parser.validation.quality_metrics_orchestrator import (
+from midi_parser.validation.round_trip_validator import RoundTripValidator
+from midi_parser.validation.validation_metrics import RoundTripMetrics
+from midi_parser.validation.quality_metrics_orchestrator import (
     QualityMetricsOrchestrator,
     ComprehensiveQualityMetrics,
     QualityGate,
@@ -541,7 +541,7 @@ class ValidationPipelineOrchestrator:
                 strategy = self.state.tokenization_result.tokenization_strategy
                 
                 # Create tokenizer to perform detokenization
-                from parser.core.tokenizer_manager import TokenizerManager
+                from midi_parser.core.tokenizer_manager import TokenizerManager
                 tokenizer_manager = TokenizerManager(self.config)
                 tokenizer = tokenizer_manager.create_tokenizer(strategy)
                 

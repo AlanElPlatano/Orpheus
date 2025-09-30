@@ -14,10 +14,10 @@ from typing import Dict, Any, Optional, List, Tuple
 from enum import Enum
 from miditoolkit import MidiFile
 
-from parser.config.defaults import MidiParserConfig, DEFAULT_CONFIG
-from parser.core.track_analyzer import TrackInfo
-from parser.core.tokenizer_manager import TokenizationResult
-from parser.core.midi_loader import MidiMetadata
+from midi_parser.config.defaults import MidiParserConfig, DEFAULT_CONFIG
+from midi_parser.core.track_analyzer import TrackInfo
+from midi_parser.core.tokenizer_manager import TokenizationResult
+from midi_parser.core.midi_loader import MidiMetadata
 
 from .validation_metrics import RoundTripMetrics
 from .musical_feature_analyzer import MusicalFeatureAnalyzer, MusicalFeatureMetrics
