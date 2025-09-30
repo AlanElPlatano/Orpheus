@@ -88,6 +88,8 @@ class RoundTripValidator:
             
         Returns:
             Tuple of (ValidationResult, RoundTripMetrics)
+
+        Caches the reconstructed MIDI.
         """
         start_time = time.time()
         strategy = strategy or self.config.tokenization
@@ -114,6 +116,9 @@ class RoundTripValidator:
             if reconstructed_midi is None:
                 return self._create_error_result("Detokenization failed", start_time)
             
+            # CACHE THE RECONSTRUCTED MIDI for later use in quality analysis
+            self._last_reconstructed_midi = reconstructed_midi
+            
             # Step 3: Compare original and reconstructed MIDI
             metrics = self.midi_comparator.compare_files(
                 midi,
@@ -132,10 +137,10 @@ class RoundTripValidator:
             # Log summary
             if validation_result.is_valid:
                 logger.info(f"Round-trip validation PASSED for {strategy} "
-                          f"(accuracy: {metrics.overall_accuracy:.2%})")
+                        f"(accuracy: {metrics.overall_accuracy:.2%})")
             else:
                 logger.warning(f"Round-trip validation FAILED for {strategy}: "
-                             f"{validation_result.errors}")
+                            f"{validation_result.errors}")
             
             return validation_result, metrics
             
