@@ -258,19 +258,25 @@ midi_parser/
 │   ├── track_analyzer.py
 │   └── json_serializer.py
 ├── validation/
-│   ├── __init__.py
-│   ├── batch_processor.py
-│   ├── midi_comparator.py
-│   ├── note_matcher.py
-│   ├── report_generator.py
-│   ├── round_trip_validator.py
-│   ├── tolerance_checker.py
-│   ├── validation_metrics.py
-│   ├── metrics.py
-│   └── quality_check.py
-├── cli/
-│   ├── batch_process.py
-│   └── single_file.py
+    ├── __init__.py
+    ├── adaptive_threshold_manager.py
+    ├── batch_processor.py
+    ├── batch_validation_coordinator.py
+    ├── config_optimizer.py
+    ├── error_recovery_manager.py
+    ├── midi_comparator.py
+    ├── musical_feature_analyzer.py
+    ├── note_matcher.py
+    ├── quality_control_main.py
+    ├── quality_metrics_orchestrator.py
+    ├── report_generator.py
+    ├── round_trip_validator.py
+    ├── sequence_quality_analyzer.py
+    ├── statistical_comparator.py
+    ├── tolerance_checker.py
+    ├── validation_metrics.py
+    ├── validation_pipeline_orchestrator.py
+    └── validation_report_aggregator.py
 └── tests/
     ├── test_tokenization.py
     ├── test_fidelity.py
