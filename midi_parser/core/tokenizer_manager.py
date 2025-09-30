@@ -7,7 +7,7 @@ suitable for transformer models.
 """
 
 import logging
-from typing import Dict, Any, Optional, List, Tuple, Union
+from typing import Dict, Any, Optional, List, Tuple, Union, TYPE_CHECKING
 from dataclasses import dataclass, field
 from pathlib import Path
 from functools import lru_cache
@@ -24,6 +24,9 @@ try:
     MIDITOK_AVAILABLE = True
 except ImportError:
     MIDITOK_AVAILABLE = False
+    # Create a placeholder for type checking when MidiTok is not available
+    from typing import Any as MIDITokenizer
+    from typing import Any as MidiTokConfig
     logging.warning("MidiTok not installed. Install with: pip install miditok")
 
 from miditoolkit import MidiFile
@@ -76,7 +79,7 @@ class TokenizationResult:
 @dataclass
 class TokenizerCache:
     """Cache for tokenizer instances to avoid recreation."""
-    tokenizers: Dict[str, MIDITokenizer] = field(default_factory=dict)
+    tokenizers: Dict[str, Any] = field(default_factory=dict)  # Changed from MIDITokenizer to Any
     configs: Dict[str, str] = field(default_factory=dict)  # Config hash -> tokenizer key
     max_cache_size: int = 10
     
@@ -91,12 +94,12 @@ class TokenizerCache:
         }, sort_keys=True)
         return hashlib.md5(config_str.encode()).hexdigest()
     
-    def get(self, strategy: str, config: TokenizerConfig) -> Optional[MIDITokenizer]:
+    def get(self, strategy: str, config: TokenizerConfig) -> Optional[Any]:  # Changed return type
         """Get cached tokenizer if available."""
         key = self.get_cache_key(strategy, config)
         return self.tokenizers.get(key)
     
-    def put(self, strategy: str, config: TokenizerConfig, tokenizer: MIDITokenizer) -> None:
+    def put(self, strategy: str, config: TokenizerConfig, tokenizer: Any) -> None:  # Changed parameter type
         """Cache a tokenizer instance."""
         key = self.get_cache_key(strategy, config)
         
@@ -151,7 +154,7 @@ class TokenizerManager:
         self,
         strategy: str,
         tokenizer_config: Optional[TokenizerConfig] = None
-    ) -> MIDITokenizer:
+    ) -> Any:  # Changed return type from MIDITokenizer to Any
         """
         Create or retrieve a cached tokenizer instance.
         
@@ -349,7 +352,7 @@ class TokenizerManager:
     def _tokenize_with_strategy(
         self,
         midi: MidiFile,
-        tokenizer: MIDITokenizer,
+        tokenizer: Any,  # Changed from MIDITokenizer to Any
         strategy: str
     ) -> List[int]:
         """
