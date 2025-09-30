@@ -9,3 +9,7 @@
 example.mid
 .mid
 .midi
+
+/venv
+
+__pycache__/
