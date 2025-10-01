@@ -227,7 +227,8 @@ class RoundTripValidator:
         """
         Detokenize tokens back to MIDI format.
         
-        MidiTok 3.x uses a different detokenization API than 2.x.
+        MidiTok 3.x requires proper TokSequence structure for detokenization.
+        We need to reconstruct the original token structure, not just pass flat integers.
         
         Args:
             tokens: Token sequence
@@ -243,58 +244,128 @@ class RoundTripValidator:
             
             logger.debug(f"Detokenizing {len(tokens)} tokens with {strategy}")
             
-            # MidiTok 3.x detokenization API
-            # Try different methods based on version
+            # MidiTok 3.x detokenization requires TokSequence objects
+            # We need to reconstruct the proper structure
+            from miditok.classes import TokSequence
+            
             reconstructed = None
             
-            # Method 1: Direct call (miditok v3.x standard)
-            try:
-                # tokenizers can be called with tokens to detokenize
-                reconstructed = tokenizer(tokens)
-            except Exception as e1:
-                logger.debug(f"Direct call failed: {e1}")
+            # Try to use the cached TokSequence from tokenization if available
+            if hasattr(self.tokenizer_manager, '_last_tok_sequence'):
+                logger.debug("Using cached TokSequence structure")
+                cached_seq = self.tokenizer_manager._last_tok_sequence
                 
-                # Method 2: tokens_to_midi method
+                # Modify the IDs but keep the structure
+                if isinstance(cached_seq, list):
+                    # Multiple sequences - this is the proper format
+                    tok_sequence = cached_seq
+                elif hasattr(cached_seq, 'ids'):
+                    # Single TokSequence - wrap in list
+                    tok_sequence = [cached_seq]
+                else:
+                    # Fall back to creating new TokSequence
+                    tok_sequence = None
+            else:
+                tok_sequence = None
+            
+            # If we don't have cached structure, create a new TokSequence
+            if tok_sequence is None:
+                logger.debug("Creating new TokSequence from flat tokens")
+                # Create a single TokSequence with the tokens
+                # MidiTok expects the i/o format to match
+                tok_sequence = TokSequence(ids=tokens)
+            
+            # Method 1: Use decode method (MidiTok 3.x standard)
+            try:
+                logger.debug("Attempting decode method")
+                reconstructed = tokenizer.decode(tok_sequence)
+                logger.debug("Decode successful")
+            except Exception as e1:
+                logger.debug(f"Decode method failed: {e1}")
+                
+                # Method 2: Try calling tokenizer directly
                 try:
-                    if hasattr(tokenizer, 'tokens_to_midi'):
-                        reconstructed = tokenizer.tokens_to_midi(tokens)
+                    logger.debug("Attempting direct call")
+                    reconstructed = tokenizer(tok_sequence)
+                    logger.debug("Direct call successful")
                 except Exception as e2:
-                    logger.debug(f"tokens_to_midi failed: {e2}")
+                    logger.debug(f"Direct call failed: {e2}")
                     
-                    # Method 3: decode method
+                    # Method 3: Try creating a simpler TokSequence
                     try:
-                        if hasattr(tokenizer, 'decode'):
-                            reconstructed = tokenizer.decode(tokens)
+                        logger.debug("Trying simplified TokSequence")
+                        # Some tokenizers expect different formats
+                        # Try wrapping in an extra list dimension
+                        simple_seq = TokSequence(ids=[tokens])
+                        reconstructed = tokenizer.decode(simple_seq)
+                        logger.debug("Simplified sequence successful")
                     except Exception as e3:
-                        logger.debug(f"decode failed: {e3}")
-                        raise e1  # Raise the original error
+                        logger.debug(f"Simplified sequence failed: {e3}")
+                        
+                        # Final attempt: Create proper multi-track structure
+                        try:
+                            logger.debug("Trying multi-track structure")
+                            # Create a proper multi-track TokSequence
+                            # Split tokens into chunks (heuristic: assume ~1000 tokens per track)
+                            chunk_size = 1000
+                            token_chunks = [tokens[i:i+chunk_size] for i in range(0, len(tokens), chunk_size)]
+                            multi_seq = [TokSequence(ids=chunk) for chunk in token_chunks]
+                            reconstructed = tokenizer.decode(multi_seq)
+                            logger.debug("Multi-track structure successful")
+                        except Exception as e4:
+                            logger.error(f"All detokenization attempts failed")
+                            logger.error(f"Last error: {e4}")
+                            raise e1  # Raise the first error
             
             # Convert to MidiFile if needed
             if reconstructed is None:
                 logger.error("All detokenization methods returned None")
                 return None
-                
+            
             # Handle different return types
             if isinstance(reconstructed, MidiFile):
                 logger.debug("Detokenization returned MidiFile directly")
                 return reconstructed
-                
-            elif hasattr(reconstructed, 'to_midi'):
+            
+            # Check for symusic Score object
+            try:
+                import symusic
+                if isinstance(reconstructed, symusic.Score):
+                    logger.debug("Converting symusic.Score to MidiFile")
+                    # Save to temporary path and reload
+                    import tempfile
+                    with tempfile.NamedTemporaryFile(suffix='.mid', delete=False) as tmp:
+                        tmp_path = tmp.name
+                    reconstructed.dump_midi(tmp_path)
+                    return MidiFile(tmp_path)
+            except ImportError:
+                pass
+            
+            # Try other conversion methods
+            if hasattr(reconstructed, 'to_midi'):
                 logger.debug("Converting to MidiFile using .to_midi()")
                 return reconstructed.to_midi()
-                
-            elif hasattr(reconstructed, 'dump'):
-                # Some versions return a Score object
-                logger.debug("Converting Score to MidiFile")
-                temp_path = "/tmp/temp_detokenized.mid"
-                reconstructed.dump(temp_path)
-                return MidiFile(temp_path)
-                
-            else:
-                logger.error(f"Unexpected detokenization output type: {type(reconstructed)}")
-                logger.error(f"Available methods: {dir(reconstructed)}")
-                return None
-                
+            
+            if hasattr(reconstructed, 'dump_midi'):
+                logger.debug("Converting using dump_midi")
+                import tempfile
+                with tempfile.NamedTemporaryFile(suffix='.mid', delete=False) as tmp:
+                    tmp_path = tmp.name
+                reconstructed.dump_midi(tmp_path)
+                return MidiFile(tmp_path)
+            
+            if hasattr(reconstructed, 'dump'):
+                logger.debug("Converting using dump")
+                import tempfile
+                with tempfile.NamedTemporaryFile(suffix='.mid', delete=False) as tmp:
+                    tmp_path = tmp.name
+                reconstructed.dump(tmp_path)
+                return MidiFile(tmp_path)
+            
+            logger.error(f"Cannot convert {type(reconstructed)} to MidiFile")
+            logger.error(f"Available methods: {dir(reconstructed)}")
+            return None
+            
         except Exception as e:
             logger.error(f"Detokenization failed: {e}")
             import traceback

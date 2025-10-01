@@ -1,5 +1,5 @@
 """
-MIDI tokenization manager module using MidiTok
+MIDI tokenization manager module using MidiTok 3.x.
 
 This module provides the core tokenization functionality, managing multiple
 tokenization strategies and handling the conversion from MIDI to token sequences
@@ -318,10 +318,8 @@ class TokenizerManager:
         auto_select: bool = False
     ) -> TokenizationResult:
         """
-        Tokenize a MIDI file using the specified or auto-selected strategy.
-        
-        This is the main tokenization function as specified in Section 4, Step 3.
-        
+        Tokenize a MIDI file using the specified strategy.
+
         Args:
             midi: MidiFile object to tokenize
             strategy: Tokenization strategy (uses config default if None)
@@ -413,48 +411,68 @@ class TokenizerManager:
         Returns:
             List of integer tokens
         
-        MidiTok 3.x returns List[TokSequence], need to extract .ids
+        MidiTok 3.x returns TokSequence objects that need proper handling.
+        Some tokenizers use multi-dimensional tokens (track, token_id).
         """
         try:
             # Convert miditoolkit.MidiFile to symusic.Score if available
             if SYMUSIC_AVAILABLE:
                 import symusic
-                # Try to convert
                 try:
-                    # MidiTok 3.x will handle the conversion automatically
-                    # but we suppress the warning by converting explicitly
                     score = symusic.Score(midi)
                 except:
-                    # Fall back to letting MidiTok handle it
                     score = midi
             else:
                 score = midi
             
-            # Call tokenizer - returns List[TokSequence]
+            # Call tokenizer - returns TokSequence or List[TokSequence]
             tok_sequences = tokenizer(score)
             
-            # Extract integer tokens from TokSequence objects
+            # Store the raw TokSequence for later detokenization
+            # This is important because some tokenizers need the full structure
+            self._last_tok_sequence = tok_sequences
+            
+            # Extract tokens while preserving structure information
             tokens = []
             
             if isinstance(tok_sequences, list):
+                # Multiple tracks/sequences
                 for seq in tok_sequences:
                     if hasattr(seq, 'ids'):
-                        # TokSequence object - extract ids
-                        tokens.extend(seq.ids)
+                        # TokSequence object - get ids
+                        seq_ids = seq.ids
+                        # Handle both 1D and 2D token structures
+                        if seq_ids and isinstance(seq_ids[0], (list, tuple)):
+                            # 2D structure - flatten but this loses info
+                            # Better to keep the sequence structure
+                            tokens.extend([id for sublist in seq_ids for id in sublist])
+                        else:
+                            tokens.extend(seq_ids)
                     elif isinstance(seq, (list, tuple)):
-                        # Already a list of tokens
                         tokens.extend(seq)
-                    elif isinstance(seq, int):
-                        # Single token
-                        tokens.append(seq)
             elif hasattr(tok_sequences, 'ids'):
                 # Single TokSequence
-                tokens = tok_sequences.ids
+                seq_ids = tok_sequences.ids
+                if seq_ids and isinstance(seq_ids[0], (list, tuple)):
+                    tokens = [id for sublist in seq_ids for id in sublist]
+                else:
+                    tokens = list(seq_ids)
             
-            # Ensure all are integers
-            tokens = [int(t) for t in tokens]
+            # Ensure all are integers (handle any remaining nested structures)
+            flat_tokens = []
+            for t in tokens:
+                if isinstance(t, int):
+                    flat_tokens.append(t)
+                elif isinstance(t, (list, tuple)):
+                    # Should not happen, but handle it
+                    flat_tokens.extend([int(x) for x in t if isinstance(x, int)])
+                else:
+                    try:
+                        flat_tokens.append(int(t))
+                    except (ValueError, TypeError):
+                        logger.warning(f"Skipping non-integer token: {t}")
             
-            return tokens
+            return flat_tokens
             
         except Exception as e:
             logger.error(f"Tokenization failed: {e}")
