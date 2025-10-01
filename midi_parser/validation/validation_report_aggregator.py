@@ -799,28 +799,32 @@ Key Findings:
         """
         logger.info(f"Exporting report to {output_path} as {format.value}")
         
+        # Ensure parent directory exists
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Add encoding='utf-8' to all file writes to handle emoji characters
         if format == ReportFormat.JSON:
-            with open(output_path, 'w') as f:
+            with open(output_path, 'w', encoding='utf-8') as f:
                 json.dump(report.to_dict(), f, indent=2)
                 
         elif format == ReportFormat.MARKDOWN:
             content = self._format_markdown(report)
-            with open(output_path, 'w') as f:
+            with open(output_path, 'w', encoding='utf-8') as f:
                 f.write(content)
                 
         elif format == ReportFormat.HTML:
             content = self._format_html(report)
-            with open(output_path, 'w') as f:
+            with open(output_path, 'w', encoding='utf-8') as f:
                 f.write(content)
                 
         elif format == ReportFormat.TEXT:
             content = self._format_text(report)
-            with open(output_path, 'w') as f:
+            with open(output_path, 'w', encoding='utf-8') as f:
                 f.write(content)
                 
         elif format == ReportFormat.CSV:
             content = self._format_csv(report)
-            with open(output_path, 'w') as f:
+            with open(output_path, 'w', encoding='utf-8') as f:
                 f.write(content)
         
         logger.info(f"Report exported successfully to {output_path}")
