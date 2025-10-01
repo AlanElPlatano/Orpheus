@@ -1,4 +1,4 @@
-## 10. Quality Assurance Checklist
+## 11. Quality Assurance Checklist
 
 ### Pre-processing Validation
 - [ ] MIDI file integrity check
@@ -20,7 +20,7 @@
 
 ---
 
-## 11. Performance Considerations
+## 12. Performance Considerations
 
 ### Memory Management
 - Stream large MIDI files without full loading
@@ -40,7 +40,7 @@
 ---
 
 
-## 14. Advanced Features & Extensibility
+## 13. Advanced Features & Extensibility
 
 ### Custom Tokenization Hooks
 ```python
@@ -93,7 +93,7 @@ PRESETS = {
 
 ---
 
-## 15. Data Quality Metrics
+## 14. Data Quality Metrics
 
 ### Musical Quality Indicators
 ```python
@@ -136,7 +136,7 @@ def calculate_quality_score(midi_data, tokens):
 
 ---
 
-## 16. Dataset Management Features
+## 15. Dataset Management Features
 
 ### Batch Processing with Progress Tracking
 ```python
@@ -173,7 +173,7 @@ def generate_dataset_report(tokenized_dir):
 
 ---
 
-## 17. Integration with Training Pipelines
+## 16. Integration with Training Pipelines
 
 ### Direct Model Input Preparation
 ```python
@@ -216,7 +216,7 @@ class MidiDataLoader:
 
 ---
 
-## 18. Performance Optimization
+## 17. Performance Optimization
 
 ### Memory-Efficient Processing
 ```python
@@ -265,7 +265,7 @@ class TokenizationCache:
 
 ---
 
-## 19. Advanced Configuration Options
+## 18. Advanced Configuration Options
 
 ### Tokenization Strategy Auto-Selection
 ```python
@@ -299,7 +299,7 @@ def adaptive_beat_resolution(midi_file):
 
 ---
 
-## 20. Deployment & Scalability
+## 19. Deployment & Scalability
 
 ### Docker Containerization
 ```dockerfile
@@ -345,7 +345,7 @@ async def health_check():
 
 ---
 
-## 21. Monitoring & Analytics
+## 20. Monitoring & Analytics
 
 ### Processing Analytics Dashboard
 ```python
@@ -373,7 +373,7 @@ PROCESSING_METRICS = {
 
 ---
 
-## 22. Future Extensions
+## 21. Future Extensions
 
 ### Planned Features Roadmap
 ```python

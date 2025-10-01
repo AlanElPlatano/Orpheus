@@ -287,34 +287,11 @@ midi_parser/
 
 ## 9. CLI Interface
 
-### Batch Processing
-```bash
-python -m midi_parser batch \
-    --input-dir ./raw_midis \
-    --output-dir ./tokenized \
-    --tokenization REMI \
-    --config ./config.yaml \
-    --validate
-```
-
-### Single File Processing
-```bash
-python -m midi_parser single \
-    --input ./song.mid \
-    --output ./song_tokens.json \
-    --tokenization CPWord
-```
-
-### Validation Mode
-```bash
-python -m midi_parser validate \
-    --input-dir ./tokenized \
-    --threshold 0.98
-```
+To be determined.
 
 ---
 
-## 13. Error Handling & Robustness
+## 10. Error Handling & Robustness
 
 ### Graceful Failure Modes
 ```python
