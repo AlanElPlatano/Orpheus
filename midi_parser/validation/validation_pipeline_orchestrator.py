@@ -531,77 +531,51 @@ class ValidationPipelineOrchestrator:
             logger.warning("No original MIDI file for quality analysis")
             return ComprehensiveQualityMetrics()
         
-        # Get the reconstructed MIDI from the tokenization/detokenization process
+        # Get the reconstructed MIDI from round-trip validator cache
+        # Because the round-trip validator already performed detokenization
         reconstructed = None
         
-        # If we have tokenization result, reconstruct the MIDI
-        if self.state.tokenization_result and self.state.tokenization_result.tokens:
-            try:
-                # Get the strategy used for tokenization
-                strategy = self.state.tokenization_result.tokenization_strategy
-                
-                # Create tokenizer to perform detokenization
-                from midi_parser.core.tokenizer_manager import TokenizerManager
-                tokenizer_manager = TokenizerManager(self.config)
-                tokenizer = tokenizer_manager.create_tokenizer(strategy)
-                
-                # Detokenize the tokens back to MIDI
-                tokens = self.state.tokenization_result.tokens
-                
-                # Handle different MidiTok API versions
-                if hasattr(tokenizer, 'tokens_to_midi'):
-                    reconstructed = tokenizer.tokens_to_midi(tokens)
-                elif hasattr(tokenizer, 'detokenize'):
-                    reconstructed = tokenizer.detokenize(tokens)
-                else:
-                    # Fallback for older versions
-                    reconstructed = tokenizer(tokens, _=None)
-                
-                # Ensure we have a MidiFile object
-                if not isinstance(reconstructed, MidiFile):
-                    if hasattr(reconstructed, 'to_midi'):
-                        reconstructed = reconstructed.to_midi()
-                    else:
-                        logger.error(f"Unexpected detokenization output type: {type(reconstructed)}")
-                        reconstructed = None
-                        
-            except Exception as e:
-                logger.error(f"Failed to reconstruct MIDI for quality analysis: {e}")
-                reconstructed = None
-        
-        # Alternative: Try to get reconstructed MIDI from round-trip validator cache
-        # The round-trip validator should have already performed this detokenization
-        if reconstructed is None and hasattr(self.round_trip_validator, '_last_reconstructed_midi'):
+        if hasattr(self.round_trip_validator, '_last_reconstructed_midi'):
             reconstructed = self.round_trip_validator._last_reconstructed_midi
             logger.info("Using cached reconstructed MIDI from round-trip validator")
         
-        # If we still don't have a reconstructed MIDI, we can't do quality analysis
+        # If still no reconstructed MIDI, skip quality analysis
         if reconstructed is None:
             logger.warning("No reconstructed MIDI available for quality analysis")
             # Return basic metrics without comparison
             return ComprehensiveQualityMetrics(
                 overall_quality_score=0.0,
                 quality_gate_passed=False,
-                critical_issues=["Unable to reconstruct MIDI for quality analysis"]
+                critical_issues=["Unable to obtain reconstructed MIDI for quality analysis"]
             )
         
-        # Now perform the actual quality analysis with both original and reconstructed
-        quality_metrics = self.quality_orchestrator.perform_comprehensive_analysis(
-            original=self.state.midi_file,
-            reconstructed=reconstructed,
-            tokenization_result=self.state.tokenization_result,
-            round_trip_metrics=self.state.round_trip_metrics,
-            track_infos=self.state.track_infos,
-            metadata=self.state.metadata,
-            use_case=self.pipeline_config.use_case
-        )
-        
-        self.state.quality_metrics = quality_metrics
-        
-        logger.info(f"Quality analysis: {quality_metrics.overall_quality_score:.2%}, "
-                f"gate {'PASSED' if quality_metrics.quality_gate_passed else 'FAILED'}")
-        
-        return quality_metrics
+        # Perform the actual quality analysis with both original and reconstructed
+        try:
+            quality_metrics = self.quality_orchestrator.perform_comprehensive_analysis(
+                original=self.state.midi_file,
+                reconstructed=reconstructed,
+                tokenization_result=self.state.tokenization_result,
+                round_trip_metrics=self.state.round_trip_metrics,
+                track_infos=self.state.track_infos,
+                metadata=self.state.metadata,
+                use_case=self.pipeline_config.use_case
+            )
+            
+            self.state.quality_metrics = quality_metrics
+            
+            logger.info(f"Quality analysis: {quality_metrics.overall_quality_score:.2%}, "
+                    f"gate {'PASSED' if quality_metrics.quality_gate_passed else 'FAILED'}")
+            
+            return quality_metrics
+            
+        except Exception as e:
+            logger.error(f"Quality analysis failed: {e}")
+            # Return minimal metrics on error
+            return ComprehensiveQualityMetrics(
+                overall_quality_score=0.0,
+                quality_gate_passed=False,
+                critical_issues=[f"Quality analysis error: {str(e)}"]
+            )
     
     def _stage_generate_report(self) -> Dict[str, Any]:
         """Generate validation report."""

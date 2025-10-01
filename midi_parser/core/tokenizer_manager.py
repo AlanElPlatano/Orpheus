@@ -201,6 +201,9 @@ class TokenizerManager:
         self.cache = TokenizerCache()
         self._fallback_strategies = ["REMI", "TSD", "Structured"]
         
+        # Cache for last tokenization (used by round-trip validator)
+        self._last_tok_sequence = None
+        
         logger.info(f"TokenizerManager initialized with MidiTok {MIDITOK_VERSION}")
         
     def create_tokenizer(

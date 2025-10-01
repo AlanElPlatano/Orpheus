@@ -228,12 +228,12 @@ class RoundTripValidator:
         Detokenize tokens back to MIDI format.
         
         MidiTok 3.x requires proper TokSequence structure for detokenization.
-        We need to reconstruct the original token structure, not just pass flat integers.
+        We need to use the cached TokSequence from tokenization to preserve structure.
         
         Args:
-            tokens: Token sequence
+            tokens: Token sequence (flat list for reference)
             strategy: Tokenization strategy used
-            ticks_per_beat: PPQ for the MIDI file
+            ticks_per_beat: PPQ for the MIDI file (used if creating new MIDI)
             
         Returns:
             Reconstructed MidiFile or None if failed
@@ -242,128 +242,72 @@ class RoundTripValidator:
             # Get or create tokenizer
             tokenizer = self.tokenizer_manager.create_tokenizer(strategy)
             
-            logger.debug(f"Detokenizing {len(tokens)} tokens with {strategy}")
+            logger.debug(f"Detokenizing with {strategy}, target PPQ: {ticks_per_beat}")
             
-            # MidiTok 3.x detokenization requires TokSequence objects
-            # We need to reconstruct the proper structure
+            # IMPORTANT: Use the cached TokSequence from tokenization
+            # This preserves the multi-dimensional structure and track information
+            if hasattr(self.tokenizer_manager, '_last_tok_sequence') and \
+            self.tokenizer_manager._last_tok_sequence is not None:
+                
+                logger.debug("Using cached TokSequence structure from tokenization")
+                tok_sequence = self.tokenizer_manager._last_tok_sequence
+                
+                # Use decode method with the original TokSequence structure
+                try:
+                    logger.debug("Attempting decode with cached structure")
+                    reconstructed = tokenizer.decode(tok_sequence)
+                    logger.debug("Decode successful with cached structure")
+                    
+                    # Convert to MidiFile and fix PPQ if needed
+                    midi_result = self._convert_to_midifile(reconstructed, ticks_per_beat)
+                    if midi_result:
+                        return midi_result
+                        
+                except Exception as e:
+                    logger.warning(f"Decode with cached structure failed: {e}")
+                    # Fall through to alternative methods
+            
+            # If cached structure not available or failed, try alternative methods
+            logger.debug("Cached structure not available, creating new TokSequence")
+            
             from miditok.classes import TokSequence
             
-            reconstructed = None
-            
-            # Try to use the cached TokSequence from tokenization if available
-            if hasattr(self.tokenizer_manager, '_last_tok_sequence'):
-                logger.debug("Using cached TokSequence structure")
-                cached_seq = self.tokenizer_manager._last_tok_sequence
-                
-                # Modify the IDs but keep the structure
-                if isinstance(cached_seq, list):
-                    # Multiple sequences - this is the proper format
-                    tok_sequence = cached_seq
-                elif hasattr(cached_seq, 'ids'):
-                    # Single TokSequence - wrap in list
-                    tok_sequence = [cached_seq]
-                else:
-                    # Fall back to creating new TokSequence
-                    tok_sequence = None
-            else:
-                tok_sequence = None
-            
-            # If we don't have cached structure, create a new TokSequence
-            if tok_sequence is None:
-                logger.debug("Creating new TokSequence from flat tokens")
-                # Create a single TokSequence with the tokens
-                # MidiTok expects the i/o format to match
-                tok_sequence = TokSequence(ids=tokens)
-            
-            # Method 1: Use decode method (MidiTok 3.x standard)
+            # Method 1: Single TokSequence (for single-track tokenizers like REMI)
             try:
-                logger.debug("Attempting decode method")
-                reconstructed = tokenizer.decode(tok_sequence)
-                logger.debug("Decode successful")
+                logger.debug("Trying single TokSequence")
+                tok_seq = TokSequence(ids=tokens)
+                reconstructed = tokenizer.decode(tok_seq)
+                midi_result = self._convert_to_midifile(reconstructed, ticks_per_beat)
+                if midi_result:
+                    logger.debug("Single TokSequence successful")
+                    return midi_result
             except Exception as e1:
-                logger.debug(f"Decode method failed: {e1}")
-                
-                # Method 2: Try calling tokenizer directly
-                try:
-                    logger.debug("Attempting direct call")
-                    reconstructed = tokenizer(tok_sequence)
-                    logger.debug("Direct call successful")
-                except Exception as e2:
-                    logger.debug(f"Direct call failed: {e2}")
-                    
-                    # Method 3: Try creating a simpler TokSequence
-                    try:
-                        logger.debug("Trying simplified TokSequence")
-                        # Some tokenizers expect different formats
-                        # Try wrapping in an extra list dimension
-                        simple_seq = TokSequence(ids=[tokens])
-                        reconstructed = tokenizer.decode(simple_seq)
-                        logger.debug("Simplified sequence successful")
-                    except Exception as e3:
-                        logger.debug(f"Simplified sequence failed: {e3}")
-                        
-                        # Final attempt: Create proper multi-track structure
-                        try:
-                            logger.debug("Trying multi-track structure")
-                            # Create a proper multi-track TokSequence
-                            # Split tokens into chunks (heuristic: assume ~1000 tokens per track)
-                            chunk_size = 1000
-                            token_chunks = [tokens[i:i+chunk_size] for i in range(0, len(tokens), chunk_size)]
-                            multi_seq = [TokSequence(ids=chunk) for chunk in token_chunks]
-                            reconstructed = tokenizer.decode(multi_seq)
-                            logger.debug("Multi-track structure successful")
-                        except Exception as e4:
-                            logger.error(f"All detokenization attempts failed")
-                            logger.error(f"Last error: {e4}")
-                            raise e1  # Raise the first error
+                logger.debug(f"Single TokSequence failed: {e1}")
             
-            # Convert to MidiFile if needed
-            if reconstructed is None:
-                logger.error("All detokenization methods returned None")
-                return None
-            
-            # Handle different return types
-            if isinstance(reconstructed, MidiFile):
-                logger.debug("Detokenization returned MidiFile directly")
-                return reconstructed
-            
-            # Check for symusic Score object
+            # Method 2: Try with 2D structure (wrap in list for multi-track)
             try:
-                import symusic
-                if isinstance(reconstructed, symusic.Score):
-                    logger.debug("Converting symusic.Score to MidiFile")
-                    # Save to temporary path and reload
-                    import tempfile
-                    with tempfile.NamedTemporaryFile(suffix='.mid', delete=False) as tmp:
-                        tmp_path = tmp.name
-                    reconstructed.dump_midi(tmp_path)
-                    return MidiFile(tmp_path)
-            except ImportError:
-                pass
+                logger.debug("Trying multi-track structure")
+                tok_seq = TokSequence(ids=tokens)
+                reconstructed = tokenizer.decode([tok_seq])  # Wrap in list
+                midi_result = self._convert_to_midifile(reconstructed, ticks_per_beat)
+                if midi_result:
+                    logger.debug("Multi-track structure successful")
+                    return midi_result
+            except Exception as e2:
+                logger.debug(f"Multi-track structure failed: {e2}")
             
-            # Try other conversion methods
-            if hasattr(reconstructed, 'to_midi'):
-                logger.debug("Converting to MidiFile using .to_midi()")
-                return reconstructed.to_midi()
+            # Method 3: Direct tokenizer call
+            try:
+                logger.debug("Trying direct tokenizer call")
+                reconstructed = tokenizer(tokens)
+                midi_result = self._convert_to_midifile(reconstructed, ticks_per_beat)
+                if midi_result:
+                    logger.debug("Direct call successful")
+                    return midi_result
+            except Exception as e3:
+                logger.debug(f"Direct call failed: {e3}")
             
-            if hasattr(reconstructed, 'dump_midi'):
-                logger.debug("Converting using dump_midi")
-                import tempfile
-                with tempfile.NamedTemporaryFile(suffix='.mid', delete=False) as tmp:
-                    tmp_path = tmp.name
-                reconstructed.dump_midi(tmp_path)
-                return MidiFile(tmp_path)
-            
-            if hasattr(reconstructed, 'dump'):
-                logger.debug("Converting using dump")
-                import tempfile
-                with tempfile.NamedTemporaryFile(suffix='.mid', delete=False) as tmp:
-                    tmp_path = tmp.name
-                reconstructed.dump(tmp_path)
-                return MidiFile(tmp_path)
-            
-            logger.error(f"Cannot convert {type(reconstructed)} to MidiFile")
-            logger.error(f"Available methods: {dir(reconstructed)}")
+            logger.error("All detokenization methods failed")
             return None
             
         except Exception as e:
@@ -371,6 +315,104 @@ class RoundTripValidator:
             import traceback
             logger.error(traceback.format_exc())
             raise DetokenizationError(f"Failed to detokenize: {str(e)}")
+
+    def _convert_to_midifile(
+        self,
+        reconstructed: Any,
+        target_ppq: int = 480
+    ) -> Optional[MidiFile]:
+        """
+        Convert various MidiTok output formats to MidiFile.
+        
+        Args:
+            reconstructed: Output from tokenizer decode
+            target_ppq: Target ticks per beat
+            
+        Returns:
+            MidiFile object or None if conversion failed
+        """
+        import tempfile
+        import os
+        
+        try:
+            # Already a MidiFile
+            if isinstance(reconstructed, MidiFile):
+                logger.debug(f"Already MidiFile (PPQ: {reconstructed.ticks_per_beat})")
+                # Check if PPQ needs correction
+                if reconstructed.ticks_per_beat != target_ppq:
+                    logger.warning(f"PPQ mismatch: {reconstructed.ticks_per_beat} vs {target_ppq}")
+                    # MidiFile PPQ mismatch is common with MidiTok 3.x
+                    # The comparison should handle this gracefully
+                return reconstructed
+            
+            # Try symusic.Score conversion
+            try:
+                import symusic
+                if isinstance(reconstructed, symusic.Score):
+                    logger.debug(f"Converting symusic.Score (PPQ: {reconstructed.ticks_per_quarter})")
+                    
+                    # Save to temporary file with correct PPQ
+                    with tempfile.NamedTemporaryFile(suffix='.mid', delete=False) as tmp:
+                        tmp_path = tmp.name
+                    
+                    # Adjust PPQ if needed
+                    if reconstructed.ticks_per_quarter != target_ppq:
+                        logger.debug(f"Adjusting PPQ from {reconstructed.ticks_per_quarter} to {target_ppq}")
+                        reconstructed = reconstructed.resample(target_ppq)
+                    
+                    reconstructed.dump_midi(tmp_path)
+                    midi = MidiFile(tmp_path)
+                    
+                    # Clean up temp file
+                    try:
+                        os.unlink(tmp_path)
+                    except:
+                        pass
+                    
+                    return midi
+            except ImportError:
+                pass
+            except Exception as e:
+                logger.debug(f"symusic conversion failed: {e}")
+            
+            # Try other conversion methods
+            if hasattr(reconstructed, 'to_midi'):
+                logger.debug("Converting using .to_midi()")
+                midi = reconstructed.to_midi()
+                if isinstance(midi, MidiFile):
+                    return midi
+            
+            if hasattr(reconstructed, 'dump_midi'):
+                logger.debug("Converting using .dump_midi()")
+                with tempfile.NamedTemporaryFile(suffix='.mid', delete=False) as tmp:
+                    tmp_path = tmp.name
+                reconstructed.dump_midi(tmp_path)
+                midi = MidiFile(tmp_path)
+                try:
+                    os.unlink(tmp_path)
+                except:
+                    pass
+                return midi
+            
+            if hasattr(reconstructed, 'dump'):
+                logger.debug("Converting using .dump()")
+                with tempfile.NamedTemporaryFile(suffix='.mid', delete=False) as tmp:
+                    tmp_path = tmp.name
+                reconstructed.dump(tmp_path)
+                midi = MidiFile(tmp_path)
+                try:
+                    os.unlink(tmp_path)
+                except:
+                    pass
+                return midi
+            
+            logger.error(f"Cannot convert {type(reconstructed)} to MidiFile")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Conversion to MidiFile failed: {e}")
+            return None
+            
     
     def _create_error_result(
         self,
