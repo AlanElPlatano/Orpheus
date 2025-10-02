@@ -96,6 +96,52 @@ else:
 
 
 # ============================================================================
+# Helper Functions
+# ============================================================================
+
+def convert_midi_to_symusic(midi: MidiFile) -> Any:
+    """
+    Convert miditoolkit.MidiFile to symusic.Score.
+    
+    Args:
+        midi: MidiFile object from miditoolkit
+        
+    Returns:
+        symusic.Score object if symusic is available, otherwise original midi
+    """
+    if not SYMUSIC_AVAILABLE:
+        logger.warning("symusic not available, using miditoolkit object (will trigger warning)")
+        return midi
+    
+    try:
+        import symusic
+        import tempfile
+        import os
+        
+        # The easiest and most reliable way is to save the MIDI file temporarily
+        # and load it with symusic, since symusic can read MIDI files directly
+        with tempfile.NamedTemporaryFile(mode='wb', suffix='.mid', delete=False) as tmp_file:
+            tmp_path = tmp_file.name
+            midi.dump(tmp_path)
+        
+        try:
+            # Load the MIDI file with symusic
+            score = symusic.Score(tmp_path)
+            logger.debug("Successfully converted MidiFile to symusic.Score")
+            return score
+        finally:
+            # Clean up the temporary file
+            try:
+                os.unlink(tmp_path)
+            except:
+                pass
+        
+    except Exception as e:
+        logger.warning(f"Failed to convert to symusic.Score: {e}, using original midi")
+        return midi
+
+
+# ============================================================================
 # Data Classes
 # ============================================================================
 
@@ -332,10 +378,6 @@ class TokenizerManager:
             
         Returns:
             TokenizationResult with tokens and metadata
-
-        - Returns List[TokSequence] instead of List[int]
-        - Uses symusic.Score as backend instead of miditoolkit
-        - Need to extract .ids from TokSequence objects
         """
         import time
         start_time = time.time()
@@ -356,8 +398,11 @@ class TokenizerManager:
             # Get or create tokenizer
             tokenizer = self.create_tokenizer(strategy)
             
+            # Convert to symusic.Score to avoid deprecation warning
+            score = convert_midi_to_symusic(midi)
+            
             # Tokenize the MIDI file
-            tokens = self._tokenize_with_strategy(midi, tokenizer, strategy)
+            tokens = self._tokenize_with_strategy(score, tokenizer, strategy)
             
             # Handle sequence length constraints
             if len(tokens) > max_seq_length:
@@ -399,7 +444,7 @@ class TokenizerManager:
     
     def _tokenize_with_strategy(
         self,
-        midi: MidiFile,
+        score: Any,
         tokenizer: Any,
         strategy: str
     ) -> List[int]:
@@ -407,32 +452,18 @@ class TokenizerManager:
         Apply tokenization with MidiTok 3.x API.
 
         Args:
-            midi: MIDI file to tokenize
+            score: symusic.Score or MidiFile object to tokenize
             tokenizer: Tokenizer instance
             strategy: Strategy name
             
         Returns:
             List of integer tokens
-        
-        MidiTok 3.x returns TokSequence objects that need proper handling.
-        Some tokenizers use multi-dimensional tokens (track, token_id).
         """
         try:
-            # Convert miditoolkit.MidiFile to symusic.Score if available
-            if SYMUSIC_AVAILABLE:
-                import symusic
-                try:
-                    score = symusic.Score(midi)
-                except:
-                    score = midi
-            else:
-                score = midi
-            
             # Call tokenizer - returns TokSequence or List[TokSequence]
             tok_sequences = tokenizer(score)
             
             # Store the raw TokSequence for later detokenization
-            # This is important because some tokenizers need the full structure
             self._last_tok_sequence = tok_sequences
             
             # Extract tokens while preserving structure information
@@ -446,8 +477,7 @@ class TokenizerManager:
                         seq_ids = seq.ids
                         # Handle both 1D and 2D token structures
                         if seq_ids and isinstance(seq_ids[0], (list, tuple)):
-                            # 2D structure - flatten but this loses info
-                            # Better to keep the sequence structure
+                            # 2D structure - flatten
                             tokens.extend([id for sublist in seq_ids for id in sublist])
                         else:
                             tokens.extend(seq_ids)
@@ -461,13 +491,12 @@ class TokenizerManager:
                 else:
                     tokens = list(seq_ids)
             
-            # Ensure all are integers (handle any remaining nested structures)
+            # Ensure all are integers
             flat_tokens = []
             for t in tokens:
                 if isinstance(t, int):
                     flat_tokens.append(t)
                 elif isinstance(t, (list, tuple)):
-                    # Should not happen, but handle it
                     flat_tokens.extend([int(x) for x in t if isinstance(x, int)])
                 else:
                     try:
@@ -567,7 +596,8 @@ class TokenizerManager:
                 logger.info(f"Attempting fallback with {strategy}")
                 
                 tokenizer = self.create_tokenizer(strategy)
-                tokens = self._tokenize_with_strategy(midi, tokenizer, strategy)
+                score = convert_midi_to_symusic(midi)
+                tokens = self._tokenize_with_strategy(score, tokenizer, strategy)
                 
                 if len(tokens) > max_seq_length:
                     tokens = tokens[:max_seq_length]
@@ -872,6 +902,7 @@ __all__ = [
     'tokenize_midi',
     'create_adaptive_tokenizer',
     'validate_token_sequence',
+    'convert_midi_to_symusic',
     'MIDITOK_AVAILABLE',
     'MIDITOK_VERSION',
 ]
