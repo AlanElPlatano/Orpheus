@@ -97,11 +97,11 @@ def validate_multiple_files():
     print("=" * 60)
     
     # Get all MIDI files
-    batch_dir = Path("test_files/batch_test")
+    batch_dir = Path("source_midis/batch")
     midi_files = list(batch_dir.glob("*.mid")) + list(batch_dir.glob("*.midi"))
     
     if not midi_files:
-        print("No MIDI files found in test_files/batch_test/")
+        print("No MIDI files found in source_midis/batch")
         return None
     
     print(f"Found {len(midi_files)} MIDI files")
@@ -421,8 +421,8 @@ def main():
     print("🎵" * 30)
     
     # Make sure directories exist
-    Path("test_files/single_test").mkdir(parents=True, exist_ok=True)
-    Path("test_files/batch_test").mkdir(parents=True, exist_ok=True)
+    Path("source_midis/single").mkdir(parents=True, exist_ok=True)
+    Path("source_midis/batch").mkdir(parents=True, exist_ok=True)
     Path("validation_reports").mkdir(parents=True, exist_ok=True)
     
     try:
