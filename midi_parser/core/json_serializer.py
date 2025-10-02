@@ -6,6 +6,7 @@ results into standardized JSON format according to the specification.
 """
 
 import json
+import numpy as np
 import gzip
 import logging
 import re
@@ -28,6 +29,31 @@ from midi_parser.core.tokenizer_manager import TokenizationResult
 
 logger = logging.getLogger(__name__)
 
+class NumpyEncoder(json.JSONEncoder):
+    """
+    Custom JSON encoder that handles NumPy data types.
+    
+    Converts NumPy integers, floats, arrays, and other types to native Python types.
+    """
+    def default(self, obj):
+        # Handle NumPy integers
+        if isinstance(obj, (np.integer, np.int8, np.int16, np.int32, np.int64)):
+            return int(obj)
+        
+        # Handle NumPy floats
+        if isinstance(obj, (np.floating, np.float16, np.float32, np.float64)):
+            return float(obj)
+        
+        # Handle NumPy arrays
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        
+        # Handle NumPy booleans
+        if isinstance(obj, np.bool_):
+            return bool(obj)
+        
+        # Let the base class handle everything else
+        return super().default(obj)
 
 # ============================================================================
 # Data Classes
@@ -547,6 +573,7 @@ class JSONSerializer:
     def _serialize_json(self, data: Dict[str, Any]) -> str:
         """
         Serialize dictionary to JSON string with configured formatting.
+        Handles NumPy types automatically.
         
         Args:
             data: Dictionary to serialize
@@ -555,9 +582,21 @@ class JSONSerializer:
             JSON string
         """
         if self.output_config.pretty_print:
-            return json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False)
+            return json.dumps(
+                data, 
+                indent=2, 
+                sort_keys=True, 
+                ensure_ascii=False,
+                cls=NumpyEncoder  # Use custom encoder
+            )
         else:
-            return json.dumps(data, separators=(',', ':'), sort_keys=True, ensure_ascii=False)
+            return json.dumps(
+                data, 
+                separators=(',', ':'), 
+                sort_keys=True, 
+                ensure_ascii=False,
+                cls=NumpyEncoder  # Use custom encoder
+            )
     
     def batch_serialize(
         self,
