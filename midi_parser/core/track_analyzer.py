@@ -48,19 +48,19 @@ class TrackStatistics:
     def to_dict(self) -> Dict[str, Any]:
         """Convert statistics to dictionary for JSON serialization."""
         return {
-            "total_notes": self.total_notes,
-            "unique_pitches": self.unique_pitches,
-            "pitch_range": list(self.pitch_range),
-            "avg_pitch": round(self.avg_pitch, 2),
-            "avg_velocity": round(self.avg_velocity, 2),
-            "avg_duration": round(self.avg_duration, 3),
-            "total_duration": round(self.total_duration, 2),
-            "density": round(self.density, 3),
-            "polyphony_ratio": round(self.polyphony_ratio, 3),
-            "max_polyphony": self.max_polyphony,
-            "avg_polyphony": round(self.avg_polyphony, 2),
-            "empty_ratio": round(self.empty_ratio, 3),
-            "note_onset_variance": round(self.note_onset_variance, 3)
+            "total_notes": int(self.total_notes),
+            "unique_pitches": int(self.unique_pitches),
+            "pitch_range": [int(self.pitch_range[0]), int(self.pitch_range[1])],
+            "avg_pitch": round(float(self.avg_pitch), 2),
+            "avg_velocity": round(float(self.avg_velocity), 2),
+            "avg_duration": round(float(self.avg_duration), 3),
+            "total_duration": round(float(self.total_duration), 2),
+            "density": round(float(self.density), 3),
+            "polyphony_ratio": round(float(self.polyphony_ratio), 3),
+            "max_polyphony": int(self.max_polyphony),
+            "avg_polyphony": round(float(self.avg_polyphony), 2),
+            "empty_ratio": round(float(self.empty_ratio), 3),
+            "note_onset_variance": round(float(self.note_onset_variance), 3)
         }
 
 
@@ -80,14 +80,14 @@ class TrackInfo:
     def to_dict(self) -> Dict[str, Any]:
         """Convert track info to dictionary for JSON serialization."""
         return {
-            "index": self.index,
+            "index": int(self.index),
             "name": self.name,
-            "program": self.program,
-            "is_drum": self.is_drum,
+            "program": int(self.program),
+            "is_drum": bool(self.is_drum),
             "type": self.type,
             "subtype": self.subtype,
             "statistics": self.statistics.to_dict(),
-            "confidence": round(self.confidence, 3),
+            "confidence": round(float(self.confidence), 3),
             "language_hints": self.language_hints
         }
 
@@ -137,7 +137,7 @@ TRACK_NAME_PATTERNS = {
             # English
             "bass", "base", "low", "bottom",
             # Spanish
-            "bajo", "grave", "base", "tololoche" # Considering mexican instrument
+            "bajo", "grave", "base", "tololoche",
             # Portuguese
             "baixo", "grave", "base",
             # French
@@ -192,20 +192,20 @@ def calculate_track_statistics(instrument: Instrument, ppq: int = 480) -> TrackS
     notes = instrument.notes
     stats.total_notes = len(notes)
     
-    # Pitch analysis
+    # Pitch analysis - CONVERT TO NATIVE PYTHON TYPES
     pitches = [n.pitch for n in notes]
     stats.unique_pitches = len(set(pitches))
-    stats.pitch_range = (min(pitches), max(pitches))
-    stats.avg_pitch = np.mean(pitches)
+    stats.pitch_range = (int(min(pitches)), int(max(pitches)))
+    stats.avg_pitch = float(np.mean(pitches))
     
-    # Velocity analysis
+    # Velocity analysis - CONVERT TO NATIVE PYTHON TYPES
     velocities = [n.velocity for n in notes]
-    stats.avg_velocity = np.mean(velocities)
+    stats.avg_velocity = float(np.mean(velocities))
     
-    # Duration analysis
+    # Duration analysis - CONVERT TO NATIVE PYTHON TYPES
     durations = [n.end - n.start for n in notes]
-    stats.avg_duration = np.mean(durations) / ppq  # Convert to beats
-    stats.total_duration = sum(durations) / ppq
+    stats.avg_duration = float(np.mean(durations)) / ppq  # Convert to beats
+    stats.total_duration = float(sum(durations)) / ppq
     
     # Time range of track
     track_start = min(n.start for n in notes)
@@ -213,33 +213,33 @@ def calculate_track_statistics(instrument: Instrument, ppq: int = 480) -> TrackS
     track_length = (track_end - track_start) / ppq
     
     if track_length > 0:
-        stats.density = stats.total_notes / track_length
+        stats.density = float(stats.total_notes / track_length)
     
     # Polyphony analysis
     polyphony_counts = calculate_polyphony(notes)
     if polyphony_counts:
-        stats.max_polyphony = max(polyphony_counts.keys())
+        stats.max_polyphony = int(max(polyphony_counts.keys()))
         total_time_units = sum(polyphony_counts.values())
         
-        # Calculate average polyphony
+        # Calculate average polyphony - CONVERT TO NATIVE PYTHON TYPES
         weighted_sum = sum(k * v for k, v in polyphony_counts.items())
-        stats.avg_polyphony = weighted_sum / total_time_units if total_time_units > 0 else 0
+        stats.avg_polyphony = float(weighted_sum / total_time_units if total_time_units > 0 else 0)
         
         # Calculate polyphony ratio (time with >1 note)
         poly_time = sum(v for k, v in polyphony_counts.items() if k > 1)
-        stats.polyphony_ratio = poly_time / total_time_units if total_time_units > 0 else 0
+        stats.polyphony_ratio = float(poly_time / total_time_units if total_time_units > 0 else 0)
     
     # Empty space analysis
     if track_length > 0:
         covered_time = calculate_covered_time(notes) / ppq
-        stats.empty_ratio = 1.0 - (covered_time / track_length)
+        stats.empty_ratio = float(1.0 - (covered_time / track_length))
     
-    # Rhythmic regularity (onset variance)
+    # Rhythmic regularity (onset variance) - CONVERT TO NATIVE PYTHON TYPES
     if len(notes) > 1:
         onsets = sorted([n.start for n in notes])
         intervals = np.diff(onsets)
         if len(intervals) > 0:
-            stats.note_onset_variance = np.std(intervals) / ppq
+            stats.note_onset_variance = float(np.std(intervals)) / ppq
     
     return stats
 
@@ -318,7 +318,7 @@ def calculate_covered_time(notes: List[Note]) -> float:
     
     # Calculate total covered time
     total_time = sum(end - start for start, end in merged_intervals)
-    return total_time
+    return float(total_time)
 
 
 # ============================================================================
@@ -659,7 +659,7 @@ def analyze_tracks(
     Analyze and classify all tracks in a MIDI file.
     
     This is the main entry point for track analysis as specified in
-    the processing pipeline (Section 4, Step 2) in case you got here but didn't read that file first.
+    the processing pipeline (Section 4, Step 2).
     
     Args:
         midi: MidiFile object to analyze

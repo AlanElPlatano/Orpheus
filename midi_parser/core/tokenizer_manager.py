@@ -491,18 +491,18 @@ class TokenizerManager:
                 else:
                     tokens = list(seq_ids)
             
-            # Ensure all are integers
+            # Ensure all are normal python integers (not NumPy types or shit will start breaking down)
             flat_tokens = []
             for t in tokens:
-                if isinstance(t, int):
-                    flat_tokens.append(t)
-                elif isinstance(t, (list, tuple)):
-                    flat_tokens.extend([int(x) for x in t if isinstance(x, int)])
+                if isinstance(t, (list, tuple)):
+                    # Flatten nested structures and convert to int
+                    flat_tokens.extend([int(x) for x in t])
                 else:
+                    # Convert to native Python int (handles NumPy int8, int16, int32, int64, etc.)
                     try:
                         flat_tokens.append(int(t))
-                    except (ValueError, TypeError):
-                        logger.warning(f"Skipping non-integer token: {t}")
+                    except (ValueError, TypeError) as e:
+                        logger.warning(f"Skipping non-convertible token: {t} (type: {type(t)})")
             
             return flat_tokens
             
