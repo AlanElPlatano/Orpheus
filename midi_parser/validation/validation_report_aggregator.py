@@ -266,8 +266,8 @@ class ValidationReportAggregator:
         if not self.file_reports:
             return
         
-        # Calculate success rate
-        successful = sum(1 for r in self.file_reports if r.success)
+        # Calculate actual success rate based on validation_passed flag
+        successful = sum(1 for r in self.file_reports if r.validation_passed)
         report.overall_success_rate = successful / len(self.file_reports)
         
         # Extract file report summaries
@@ -346,19 +346,32 @@ class ValidationReportAggregator:
         
         if quality_scores:
             dashboard.average_quality = statistics.mean(quality_scores)
-            dashboard.quality_consistency = statistics.stdev(quality_scores) if len(quality_scores) > 1 else 0
+            
+            # Handle consistency calculation for single file case
+            if len(quality_scores) > 1:
+                dashboard.quality_consistency = statistics.stdev(quality_scores)
+            else:
+                # For single file, consistency is perfect (0 variance)
+                dashboard.quality_consistency = 0.0
+            
             dashboard.pass_rate = report.overall_success_rate
             
             # Calculate health score
-            health_score = (
-                dashboard.average_quality * 40 +  # 40% weight on quality
-                dashboard.pass_rate * 40 +         # 40% weight on pass rate
-                (1 - dashboard.quality_consistency) * 20  # 20% weight on consistency
-            ) * 100
+            # All values are already 0-1, so we weight and sum to get 0-100
+            quality_component = dashboard.average_quality * 40  # 0-40
+            pass_rate_component = dashboard.pass_rate * 40      # 0-40
+            
+            # lower is better, so invert it
+            # Map stdev to 0-20 scale (0 stdev = 20 points, high stdev = fewer points)
+            # Typical stdev for quality scores might be 0-0.3, so we cap and invert
+            consistency_penalty = min(dashboard.quality_consistency, 0.3) / 0.3
+            consistency_component = (1 - consistency_penalty) * 20  # 0-20
+            
+            health_score = quality_component + pass_rate_component + consistency_component
             
             dashboard.health_score = health_score
             
-            # Determine health status
+            # Determine health status based on corrected score
             if health_score >= 90:
                 dashboard.overall_health = "excellent"
             elif health_score >= 75:
@@ -856,7 +869,7 @@ Key Findings:
             # Add critical issues
             if dashboard.critical_issues:
                 lines.extend([
-                    "### 🚨 Critical Issues",
+                    "### Critical Issues",
                     ""
                 ])
                 for issue in dashboard.critical_issues:
@@ -880,8 +893,8 @@ Key Findings:
                 ""
             ])
             for trend in report.trend_analyses:
-                icon = "📈" if trend.direction == "improving" else "📉" if trend.direction == "declining" else "📊"
-                lines.append(f"### {icon} {trend.trend_type.title()} Trend: {trend.direction.upper()}")
+                icon = "^" if trend.direction == "improving" else "v" if trend.direction == "declining" else "-"
+                lines.append(f"### [{icon}] {trend.trend_type.title()} Trend: {trend.direction.upper()}")
                 lines.append(f"- Change Rate: {trend.change_rate:+.1f}%")
                 lines.append(f"- Confidence: {trend.confidence:.0%}")
                 lines.append("")
@@ -893,8 +906,8 @@ Key Findings:
                 ""
             ])
             for i, rec in enumerate(report.configuration_recommendations[:5], 1):
-                impact_icon = "🔴" if rec.impact == "high" else "🟡" if rec.impact == "medium" else "🟢"
-                lines.append(f"{i}. {impact_icon} **{rec.parameter}**")
+                impact_icon = "!!!" if rec.impact == "high" else "!!" if rec.impact == "medium" else "!"
+                lines.append(f"{i}. [{impact_icon}] **{rec.parameter}**")
                 lines.append(f"   - Current: `{rec.current_value}`")
                 lines.append(f"   - Recommended: `{rec.recommended_value}`")
                 lines.append(f"   - Justification: {rec.justification}")

@@ -94,7 +94,7 @@ class NoteMatcher:
         for i, recon_note in enumerate(recon_sorted):
             if i not in matched_recon:
                 comparison = NoteComparison(
-                    original_note=recon_note,  # Use recon as placeholder
+                    original_note=None,  # Leave this set to None or everything will fall apart
                     reconstructed_note=recon_note,
                     is_extra=True
                 )
@@ -206,8 +206,16 @@ class NoteMatcher:
         if not candidates:
             return None
         
+        # Use reasonable search window
+        # For typical MIDI (480 PPQ), this allows matching notes within:
+        # - 1 tick tolerance = 480 ticks search (1 quarter note)
+        # - 10 tick tolerance = 4800 ticks search (10 quarter notes)
         start_tolerance = self.tolerances.get('note_start_tick', 1)
-        search_window = start_tolerance * 10  # Reasonable search window
+        
+        # Use adaptive search window based on tolerance
+        # Minimum 480 ticks (1 quarter note at 480 PPQ)
+        # This ensures we don't miss matches due to tiny timing differences
+        search_window = max(start_tolerance * 100, 480)
         
         best_idx = None
         best_score = float('inf')
