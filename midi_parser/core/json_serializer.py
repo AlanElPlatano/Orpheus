@@ -231,6 +231,82 @@ def sanitize_filename(name: str, max_length: int = 50) -> str:
     return sanitized.lower()
 
 
+def sanitize_key_for_filename(key: str) -> str:
+    """
+    Convert musical key notation to filename-safe format.
+    
+    Converts sharps (#) and flats (b) to full word equivalents:
+    - C# -> Csharp
+    - Bb -> Bflat
+    - F#m -> Fsharpm
+    - Bbm -> Bflatm
+    
+    Args:
+        key: Musical key string (e.g., "C#", "Bbm", "F# major")
+        
+    Returns:
+        Filename-safe key string
+    
+    Examples:
+        >>> sanitize_key_for_filename("C#")
+        'Csharp'
+        >>> sanitize_key_for_filename("Bbm")
+        'Bflatm'
+        >>> sanitize_key_for_filename("F# minor")
+        'Fsharpm'
+    """
+    if not key:
+        return "C"
+    
+    # Remove common suffixes first to process them separately
+    is_minor = False
+    key_clean = key.strip()
+    
+    # Check for minor key indicators
+    if key_clean.endswith('m') or 'minor' in key_clean.lower():
+        is_minor = True
+        key_clean = key_clean.replace('minor', '').replace('Minor', '').strip()
+        # Remove trailing 'm' if it's there (but keep it for Am, Bm, etc.)
+        if key_clean.endswith('m') and len(key_clean) > 1:
+            key_clean = key_clean[:-1]
+    
+    # Remove 'major' suffix if present
+    key_clean = key_clean.replace('major', '').replace('Major', '').strip()
+    
+    # Replace sharps with 'sharp'
+    if '#' in key_clean:
+        key_clean = key_clean.replace('#', 'sharp')
+    
+    # Replace flats with 'flat'
+    # Handle both 'b' and '♭' symbols
+    if '♭' in key_clean:
+        key_clean = key_clean.replace('♭', 'flat')
+    elif 'b' in key_clean and len(key_clean) > 1:
+        # Only replace 'b' if it's after a note letter (A-G)
+        # This handles cases like "Bb" but not standalone "B"
+        result = ""
+        for i, char in enumerate(key_clean):
+            if char == 'b' and i > 0 and key_clean[i-1].upper() in 'ABCDEFG':
+                result += 'flat'
+            else:
+                result += char
+        key_clean = result
+    
+    # Add minor suffix back if needed
+    if is_minor:
+        key_clean += 'm'
+    
+    # Ensure first letter is uppercase, rest lowercase
+    if key_clean:
+        key_clean = key_clean[0].upper() + key_clean[1:].lower()
+    
+    # Fallback to C if something went wrong
+    if not key_clean or not key_clean[0].isalpha():
+        key_clean = "C"
+    
+    return key_clean
+
+
 def generate_output_filename(
     original_path: Path,
     key: str,
@@ -257,10 +333,8 @@ def generate_output_filename(
     title = original_path.stem
     sanitized_title = sanitize_filename(title, max_length=40)
     
-    # Sanitize key (remove special characters)
-    sanitized_key = re.sub(r'[#b]', '', key).replace('major', '').replace('minor', 'm').strip()
-    if not sanitized_key:
-        sanitized_key = "C"
+    # Sanitize key for filename (handles sharps and flats)
+    sanitized_key = sanitize_key_for_filename(key)
     
     # Round tempo
     tempo_str = str(int(round(avg_tempo)))
