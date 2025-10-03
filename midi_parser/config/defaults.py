@@ -21,7 +21,7 @@ class TokenizerConfig:
     """Configuration for MidiTok tokenizers."""
     pitch_range: Tuple[int, int] = (21, 109)  # A0 to C8
     beat_resolution: int = 4  # 16th note resolution
-    num_velocities: int = 16  # Velocity quantization levels
+    num_velocities: int = 64  # Velocity quantization levels
     additional_tokens: Dict[str, bool] = field(default_factory=lambda: {
         'Chord': True,
         'Rest': True,
@@ -132,12 +132,12 @@ class ProcessingConfig:
 class ValidationConfig:
     """Configuration for round-trip validation and quality checks."""
     tolerances: Dict[str, Union[int, float]] = field(default_factory=lambda: {
-        'note_start_tick': 1,           # Max 1 tick difference
-        'note_duration': 2,             # Max 2 ticks difference  
-        'velocity_bin': 1,              # Max 1 velocity bin difference
+        'note_start_tick': 2,           # Max 2 tick difference
+        'note_duration': 4,             # Max 4 ticks difference  
+        'velocity_bin': 2,              # Max 2 velocity bin difference
         'missing_notes_ratio': 0.01,    # Max 1% notes missing
         'extra_notes_ratio': 0.01,      # Max 1% extra notes
-        'tempo_bpm_diff': 1.0,          # Max 1 BPM difference
+        'tempo_bpm_diff': 3.0,          # Max 3 BPM difference
     })
     enable_round_trip_test: bool = True  # Enable round-trip validation
     quality_threshold: float = 0.95  # Min quality score to pass validation

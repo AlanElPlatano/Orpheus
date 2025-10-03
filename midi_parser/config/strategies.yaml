@@ -48,10 +48,10 @@ tokenization_strategies:
     config_overrides:
       tokenizer:
         beat_resolution: 4
-        num_velocities: 32
+        num_velocities: 64
         additional_tokens:
-          Chord: true
-          Rest: true
+          Chord: false
+          Rest: false
           Tempo: true
           TimeSignature: true
           Program: true

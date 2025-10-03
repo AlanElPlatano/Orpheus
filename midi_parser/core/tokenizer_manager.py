@@ -297,11 +297,16 @@ class TokenizerManager:
             # MidiTok 3.x uses TokenizerConfig objects
             from miditok import TokenizerConfig as MidiTokConfig
             tokenizer = tokenizer_class(tokenizer_config=miditok_config)
+            
+            # delete this later, we only need it to check for errors in the midi config
+            diagnose_miditok_config(tokenizer, strategy)
+            
         except Exception as e:
             logger.warning(f"Failed with full config: {e}")
             # Try minimal config
             try:
                 tokenizer = tokenizer_class()
+                logger.warning(f"Created {strategy} with default config")
             except Exception as e2:
                 logger.error(f"Failed to create tokenizer: {e2}")
                 raise
@@ -319,47 +324,72 @@ class TokenizerManager:
         """
         Build TokenizerConfig for MidiTok 3.x.
         
-        MidiTok 3.x uses TokenizerConfig dataclass instead of kwargs.
+        Simplified approach that works with MidiTok 3.x actual API.
         """
         from miditok import TokenizerConfig as MidiTokConfig
         
-        # Build config dict
+        # Start with minimal required config
         config_dict = {
             "pitch_range": config.pitch_range,
             "beat_res": {(0, 4): config.beat_resolution},
             "num_velocities": config.num_velocities,
         }
         
-        # Add special tokens based on our config
-        special_tokens = []
-        if config.additional_tokens.get("Chord"):
-            special_tokens.append("Chord")
-        if config.additional_tokens.get("Rest"):
-            special_tokens.append("Rest")
-        if config.additional_tokens.get("Tempo"):
-            special_tokens.append("Tempo")
-        if config.additional_tokens.get("TimeSignature"):
-            special_tokens.append("TimeSignature")
-        if config.additional_tokens.get("Program"):
-            special_tokens.append("Program")
+        # Enable metadata preservation features using MidiTok 3.x API
+        # These are boolean flags, not special_tokens
         
-        if special_tokens:
-            config_dict["special_tokens"] = special_tokens
+        # Always enable tempos for all strategies
+        config_dict["use_tempos"] = True
+        config_dict["nb_tempos"] = 64  # More bins = better tempo preservation
         
-        # Create TokenizerConfig
+        # Always enable time signatures
+        config_dict["use_time_signatures"] = True
+        
+        # Always enable programs (instruments)
+        config_dict["use_programs"] = True
+        
+        # Enable chords if requested
+        if config.additional_tokens.get("Chord", False):
+            config_dict["use_chords"] = True
+        
+        # Enable rests if requested
+        # if config.additional_tokens.get("Rest", False):
+        #    config_dict["use_rests"] = True
+        
+        # Enable pedal if requested
+        if config.additional_tokens.get("Pedal", False):
+            config_dict["use_sustain_pedals"] = True
+        
+        # Enable pitch bend if requested
+        if config.additional_tokens.get("PitchBend", False):
+            config_dict["use_pitch_bends"] = True
+        
         try:
             miditok_config = MidiTokConfig(**config_dict)
-        except Exception as e:
-            logger.warning(f"Failed to create config with special tokens: {e}")
-            # Try without special tokens
+            logger.info(f"Created {strategy} config: tempos={config_dict['use_tempos']}, "
+                    f"time_sigs={config_dict['use_time_signatures']}, "
+                    f"programs={config_dict['use_programs']}")
+            return miditok_config
+            
+        except TypeError as e:
+            logger.warning(f"MidiTok config parameter error: {e}")
+            # Try even more minimal config
             minimal_dict = {
                 "pitch_range": config.pitch_range,
                 "beat_res": {(0, 4): config.beat_resolution},
                 "num_velocities": config.num_velocities,
             }
-            miditok_config = MidiTokConfig(**minimal_dict)
-        
-        return miditok_config
+            return MidiTokConfig(**minimal_dict)
+            
+        except Exception as e:
+            logger.error(f"Failed to create MidiTok config: {e}")
+            # Last resort minimal config
+            minimal_dict = {
+                "pitch_range": config.pitch_range,
+                "beat_res": {(0, 4): config.beat_resolution},
+                "num_velocities": config.num_velocities,
+            }
+            return MidiTokConfig(**minimal_dict)
     
     def tokenize_midi(
         self,
@@ -758,6 +788,63 @@ class TokenizerManager:
 # ============================================================================
 # Utility Functions
 # ============================================================================
+
+# delete this later
+def diagnose_miditok_config(tokenizer: Any, strategy: str) -> None:
+        """
+        Diagnose what configuration a tokenizer actually has.
+        Call this after creating a tokenizer to see what's actually enabled.
+        """
+        logger.info(f"\n{'='*60}")
+        logger.info(f"MIDITOK {strategy} CONFIGURATION DIAGNOSIS")
+        logger.info(f"{'='*60}")
+        
+        if hasattr(tokenizer, 'config'):
+            cfg = tokenizer.config
+            logger.info(f"Has config object: {type(cfg)}")
+            
+            # Check what features are enabled
+            features = {
+                'use_tempos': getattr(cfg, 'use_tempos', None),
+                'use_time_signatures': getattr(cfg, 'use_time_signatures', None),
+                'use_programs': getattr(cfg, 'use_programs', None),
+                'use_chords': getattr(cfg, 'use_chords', None),
+                'use_rests': getattr(cfg, 'use_rests', None),
+                'use_sustain_pedals': getattr(cfg, 'use_sustain_pedals', None),
+                'use_pitch_bends': getattr(cfg, 'use_pitch_bends', None),
+                'nb_tempos': getattr(cfg, 'nb_tempos', None),
+                'num_velocities': getattr(cfg, 'num_velocities', None),
+            }
+            
+            for feature, value in features.items():
+                logger.info(f"  {feature}: {value}")
+        else:
+            logger.warning(f"Tokenizer has no config attribute!")
+        
+        # Check vocabulary
+        if hasattr(tokenizer, 'vocab'):
+            vocab = tokenizer.vocab
+            logger.info(f"\nVocabulary size: {len(vocab)}")
+            
+            # Sample some tokens to see what's included
+            sample_tokens = []
+            for token_str in list(vocab.keys())[:50]:
+                token_lower = str(token_str).lower()
+                if 'time' in token_lower and 'signature' in token_lower:
+                    sample_tokens.append(f"  TIME SIG: {token_str}")
+                elif 'tempo' in token_lower:
+                    sample_tokens.append(f"  TEMPO: {token_str}")
+                elif 'program' in token_lower:
+                    sample_tokens.append(f"  PROGRAM: {token_str}")
+            
+            if sample_tokens:
+                logger.info("\nSample metadata tokens found:")
+                for token in sample_tokens[:10]:
+                    logger.info(token)
+            else:
+                logger.warning("\nWARNING: No metadata tokens found in vocabulary!")
+        
+        logger.info(f"{'='*60}\n")
 
 def create_adaptive_tokenizer(
     midi: MidiFile,
