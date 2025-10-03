@@ -27,6 +27,7 @@ tokenization_strategies:
           Rest: true
           Tempo: true
           TimeSignature: true
+          'KeySignature': True
           Program: true
           Pedal: false
           PitchBend: false
@@ -54,6 +55,7 @@ tokenization_strategies:
           Rest: false
           Tempo: true
           TimeSignature: true
+          KeySignature: true
           Program: true
           Pedal: true
           PitchBend: true
@@ -484,7 +486,7 @@ use_case_presets:
     name: "Corrido Structure Training"
     description: "Optimized for 2-track MIDIs with strict chord-melody structure: chord track (measure-aligned, no rhythm variation) + 100% monophonic melody"
     config_overrides:
-      tokenization: "REMI"
+      tokenization: "MIDI-Like"
       tokenizer:
         pitch_range: [36, 84]   # Typical vocal/guitar range
         beat_resolution: 4      # Standard resolution

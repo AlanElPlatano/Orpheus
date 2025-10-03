@@ -340,10 +340,13 @@ class TokenizerManager:
         
         # Always enable tempos for all strategies
         config_dict["use_tempos"] = True
-        config_dict["nb_tempos"] = 64  # More bins = better tempo preservation
+        config_dict["num_tempos"] = 64  # Fixed: was nb_tempos (deprecated), now num_tempos
         
         # Always enable time signatures
         config_dict["use_time_signatures"] = True
+        
+        # CRITICAL: Always enable key signatures for proper metadata preservation
+        config_dict["use_key_signatures"] = True
         
         # Always enable programs (instruments)
         config_dict["use_programs"] = True
@@ -352,9 +355,10 @@ class TokenizerManager:
         if config.additional_tokens.get("Chord", False):
             config_dict["use_chords"] = True
         
+        # NOTE: use_rests is commented out due to MidiTok 3.x API compatibility issues
         # Enable rests if requested
         # if config.additional_tokens.get("Rest", False):
-        #    config_dict["use_rests"] = True
+        #     config_dict["use_rests"] = True
         
         # Enable pedal if requested
         if config.additional_tokens.get("Pedal", False):
@@ -368,6 +372,7 @@ class TokenizerManager:
             miditok_config = MidiTokConfig(**config_dict)
             logger.info(f"Created {strategy} config: tempos={config_dict['use_tempos']}, "
                     f"time_sigs={config_dict['use_time_signatures']}, "
+                    f"key_sigs={config_dict['use_key_signatures']}, "
                     f"programs={config_dict['use_programs']}")
             return miditok_config
             
@@ -791,60 +796,84 @@ class TokenizerManager:
 
 # delete this later
 def diagnose_miditok_config(tokenizer: Any, strategy: str) -> None:
-        """
-        Diagnose what configuration a tokenizer actually has.
-        Call this after creating a tokenizer to see what's actually enabled.
-        """
-        logger.info(f"\n{'='*60}")
-        logger.info(f"MIDITOK {strategy} CONFIGURATION DIAGNOSIS")
-        logger.info(f"{'='*60}")
+    """
+    Diagnose what configuration a tokenizer actually has.
+    Call this after creating a tokenizer to see what's actually enabled.
+    """
+    logger.info(f"\n{'='*60}")
+    logger.info(f"MIDITOK {strategy} CONFIGURATION DIAGNOSIS")
+    logger.info(f"{'='*60}")
+    
+    if hasattr(tokenizer, 'config'):
+        cfg = tokenizer.config
+        logger.info(f"Has config object: {type(cfg)}")
         
-        if hasattr(tokenizer, 'config'):
-            cfg = tokenizer.config
-            logger.info(f"Has config object: {type(cfg)}")
-            
-            # Check what features are enabled
-            features = {
-                'use_tempos': getattr(cfg, 'use_tempos', None),
-                'use_time_signatures': getattr(cfg, 'use_time_signatures', None),
-                'use_programs': getattr(cfg, 'use_programs', None),
-                'use_chords': getattr(cfg, 'use_chords', None),
-                'use_rests': getattr(cfg, 'use_rests', None),
-                'use_sustain_pedals': getattr(cfg, 'use_sustain_pedals', None),
-                'use_pitch_bends': getattr(cfg, 'use_pitch_bends', None),
-                'nb_tempos': getattr(cfg, 'nb_tempos', None),
-                'num_velocities': getattr(cfg, 'num_velocities', None),
-            }
-            
-            for feature, value in features.items():
-                logger.info(f"  {feature}: {value}")
-        else:
-            logger.warning(f"Tokenizer has no config attribute!")
+        # Check what features are enabled
+        features = {
+            'use_tempos': getattr(cfg, 'use_tempos', None),
+            'use_time_signatures': getattr(cfg, 'use_time_signatures', None),
+            'use_key_signatures': getattr(cfg, 'use_key_signatures', None),
+            'use_programs': getattr(cfg, 'use_programs', None),
+            'use_chords': getattr(cfg, 'use_chords', None),
+            'use_rests': getattr(cfg, 'use_rests', None),
+            'use_sustain_pedals': getattr(cfg, 'use_sustain_pedals', None),
+            'use_pitch_bends': getattr(cfg, 'use_pitch_bends', None),
+            'nb_tempos': getattr(cfg, 'nb_tempos', None),
+            'num_velocities': getattr(cfg, 'num_velocities', None),
+        }
         
-        # Check vocabulary
-        if hasattr(tokenizer, 'vocab'):
-            vocab = tokenizer.vocab
-            logger.info(f"\nVocabulary size: {len(vocab)}")
-            
-            # Sample some tokens to see what's included
-            sample_tokens = []
-            for token_str in list(vocab.keys())[:50]:
-                token_lower = str(token_str).lower()
-                if 'time' in token_lower and 'signature' in token_lower:
-                    sample_tokens.append(f"  TIME SIG: {token_str}")
-                elif 'tempo' in token_lower:
-                    sample_tokens.append(f"  TEMPO: {token_str}")
-                elif 'program' in token_lower:
-                    sample_tokens.append(f"  PROGRAM: {token_str}")
-            
-            if sample_tokens:
-                logger.info("\nSample metadata tokens found:")
-                for token in sample_tokens[:10]:
-                    logger.info(token)
-            else:
-                logger.warning("\nWARNING: No metadata tokens found in vocabulary!")
+        logger.info("\nFeatures enabled:")
+        for feature, value in features.items():
+            status = "✓" if value else "✗"
+            logger.info(f"  {status} {feature}: {value}")
+    else:
+        logger.warning(f"Tokenizer has no config attribute!")
+    
+    # Check vocabulary
+    if hasattr(tokenizer, 'vocab'):
+        vocab = tokenizer.vocab
+        logger.info(f"\nVocabulary size: {len(vocab)}")
         
-        logger.info(f"{'='*60}\n")
+        # Sample some tokens to see what's included
+        metadata_tokens = {
+            'time_signatures': [],
+            'key_signatures': [],  # ADDED
+            'tempos': [],
+            'programs': []
+        }
+        
+        for token_str in list(vocab.keys())[:100]:  # Check more tokens
+            token_lower = str(token_str).lower()
+            
+            if 'key' in token_lower and 'signature' in token_lower:
+                metadata_tokens['key_signatures'].append(token_str)
+            elif 'time' in token_lower and 'signature' in token_lower:
+                metadata_tokens['time_signatures'].append(token_str)
+            elif 'tempo' in token_lower:
+                metadata_tokens['tempos'].append(token_str)
+            elif 'program' in token_lower:
+                metadata_tokens['programs'].append(token_str)
+        
+        logger.info("\nMetadata tokens found:")
+        for category, tokens in metadata_tokens.items():
+            count = len(tokens)
+            status = "✓" if count > 0 else "✗"
+            logger.info(f"  {status} {category}: {count} tokens")
+            if tokens:
+                logger.info(f"      Sample: {tokens[:3]}")
+        
+        # WARNING if critical metadata is missing
+        if not metadata_tokens['key_signatures']:
+            logger.warning("\n⚠️  WARNING: No key signature tokens found in vocabulary!")
+            logger.warning("   This will cause key signatures to be lost during round-trip!")
+        
+        if not metadata_tokens['time_signatures']:
+            logger.warning("\n⚠️  WARNING: No time signature tokens found in vocabulary!")
+        
+        if not metadata_tokens['tempos']:
+            logger.warning("\n⚠️  WARNING: No tempo tokens found in vocabulary!")
+    
+    logger.info(f"{'='*60}\n")
 
 def create_adaptive_tokenizer(
     midi: MidiFile,

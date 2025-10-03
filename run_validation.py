@@ -21,8 +21,8 @@ def validate_single_file():
     print("=" * 60)
     
     result = validate_tokenization_pipeline(
-        midi_path=Path("midi_files/single/example.mid"),
-        strategy="TSD",  # or "TSD", "Structured", etc.
+        midi_path=Path("source_midis/single/Fuerza Regida - OYE.mid"),
+        strategy="MIDI-Like",  # or "TSD", "Structured", etc.
         enable_quality_analysis=True,
         quality_gate="standard",
         use_case="production"
@@ -226,7 +226,7 @@ def generate_comparison_report():
     print("=" * 60)
     
     # Validate with different strategies
-    strategies = ["REMI", "TSD", "Structured"]
+    strategies = ["MIDI-Like", "TSD", "Structured"]
     results = []
     
     test_file = Path("midi_files/single/example.mid")
@@ -430,10 +430,10 @@ def main():
         print("\n🔍 Running validation tests...\n")
         
         result1 = validate_single_file()
-        result2 = validate_multiple_files()
-        result3 = validate_directory_with_report()
-        result4 = generate_comparison_report()
-        result5 = generate_campaign_report()
+        # result2 = validate_multiple_files()
+        # result3 = validate_directory_with_report()
+        # result4 = generate_comparison_report()
+        # result5 = generate_campaign_report()
         get_optimization_suggestions()
         
         print("\n" + "=" * 60)
