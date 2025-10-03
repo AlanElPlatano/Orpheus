@@ -333,6 +333,7 @@ class TokenizerManager:
             "pitch_range": config.pitch_range,
             "beat_res": {(0, 4): config.beat_resolution},
             "num_velocities": config.num_velocities,
+            "one_token_stream_for_programs": False, # Put everything in one vocab
         }
         
         # Enable metadata preservation features using MidiTok 3.x API
@@ -340,7 +341,7 @@ class TokenizerManager:
         
         # Always enable tempos for all strategies
         config_dict["use_tempos"] = True
-        config_dict["num_tempos"] = 64  # Fixed: was nb_tempos (deprecated), now num_tempos
+        config_dict["num_tempos"] = 64 
         
         # Always enable time signatures
         config_dict["use_time_signatures"] = True
@@ -553,15 +554,39 @@ class TokenizerManager:
         Extract vocabulary from MidiTok 3.x tokenizer.
         
         MidiTok 3.x stores vocabulary in tokenizer.vocab attribute.
+        Can be either a single dict or a list of dicts (multi-vocabulary).
         """
         try:
-            if hasattr(tokenizer, 'vocab'):
-                vocab = tokenizer.vocab
-                # Convert to dict if needed
-                if hasattr(vocab, '__iter__') and not isinstance(vocab, dict):
-                    return {str(k): v for k, v in enumerate(vocab)}
-                return dict(vocab) if isinstance(vocab, dict) else {}
+            if not hasattr(tokenizer, 'vocab'):
+                return {}
+            
+            vocab = tokenizer.vocab
+            
+            # Handle multi-vocabulary (list of dicts)
+            if isinstance(vocab, list):
+                # Merge all vocabularies into one dict
+                # Add prefix to distinguish between vocabularies
+                merged_vocab = {}
+                for i, v in enumerate(vocab):
+                    if isinstance(v, dict):
+                        for token, idx in v.items():
+                            # Add vocab index as prefix to avoid collisions
+                            prefixed_token = f"v{i}_{token}"
+                            merged_vocab[prefixed_token] = idx
+                
+                logger.debug(f"Merged {len(vocab)} vocabularies into {len(merged_vocab)} tokens")
+                return merged_vocab
+            
+            # Handle single vocabulary (dict)
+            elif isinstance(vocab, dict):
+                return dict(vocab)
+            
+            # Handle iterable but not dict
+            elif hasattr(vocab, '__iter__'):
+                return {str(k): v for k, v in enumerate(vocab)}
+            
             return {}
+            
         except Exception as e:
             logger.warning(f"Failed to extract vocabulary: {e}")
             return {}
@@ -832,7 +857,21 @@ def diagnose_miditok_config(tokenizer: Any, strategy: str) -> None:
     # Check vocabulary
     if hasattr(tokenizer, 'vocab'):
         vocab = tokenizer.vocab
-        logger.info(f"\nVocabulary size: {len(vocab)}")
+        
+        # Handle both single vocab (dict) and multi-vocab (list of dicts)
+        vocab_list = []
+        if isinstance(vocab, dict):
+            vocab_list = [vocab]
+            logger.info(f"\nVocabulary type: Single vocabulary")
+            logger.info(f"Vocabulary size: {len(vocab)}")
+        elif isinstance(vocab, list):
+            vocab_list = vocab
+            logger.info(f"\nVocabulary type: Multi-vocabulary ({len(vocab_list)} vocabs)")
+            for i, v in enumerate(vocab_list):
+                logger.info(f"  Vocab {i}: {len(v)} tokens")
+        else:
+            logger.warning(f"Unknown vocab type: {type(vocab)}")
+            return
         
         # Sample some tokens to see what's included
         metadata_tokens = {
@@ -862,10 +901,12 @@ def diagnose_miditok_config(tokenizer: Any, strategy: str) -> None:
             if tokens:
                 logger.info(f"      Sample: {tokens[:3]}")
         
-        # WARNING if critical metadata is missing
-        if not metadata_tokens['key_signatures']:
-            logger.warning("\n⚠️  WARNING: No key signature tokens found in vocabulary!")
-            logger.warning("   This will cause key signatures to be lost during round-trip!")
+        # Don't warn about missing key signatures for MIDI-Like
+        if not metadata_tokens['key_signatures'] and strategy != "MIDI-Like":
+            logger.warning("\nâš ï¸  WARNING: No key signature tokens found in vocabulary!")
+        elif not metadata_tokens['key_signatures']:
+            logger.info("\nâ„¹ï¸  Key signatures not supported by current tokenizer")
+            logger.warning("   This will cause key signatures to be lost during round-trip! This can be intended sometimes")
         
         if not metadata_tokens['time_signatures']:
             logger.warning("\n⚠️  WARNING: No time signature tokens found in vocabulary!")
