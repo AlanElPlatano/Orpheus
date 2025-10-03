@@ -159,7 +159,9 @@ class ValidationConfig:
 @dataclass
 class MidiParserConfig:
     """Main configuration class that combines all sub-configurations."""
-    tokenization: str = "REMI"  # Default tokenization strategy
+
+    tokenization: str = "MIDI-Like"  # Default tokenization strategy
+    
     tokenizer: TokenizerConfig = field(default_factory=TokenizerConfig)
     track_classification: TrackClassificationConfig = field(default_factory=TrackClassificationConfig)
     output: OutputConfig = field(default_factory=OutputConfig)

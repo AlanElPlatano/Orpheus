@@ -31,6 +31,33 @@ tokenization_strategies:
           Pedal: false
           PitchBend: false
 
+  MIDI-Like:
+    name: "MIDI-Like"
+    description: "Direct MIDI representation with complete metadata preservation"
+    characteristics:
+      vocab_size: medium
+      sequence_length: medium
+      transformer_suitability: 4
+      musical_expressiveness: 5
+    recommended_for:
+      - complete_preservation
+      - faithful_conversion
+      - metadata_critical
+      - time_signature_preservation
+      - key_signature_preservation
+    config_overrides:
+      tokenizer:
+        beat_resolution: 4
+        num_velocities: 32
+        additional_tokens:
+          Chord: true
+          Rest: true
+          Tempo: true
+          TimeSignature: true
+          Program: true
+          Pedal: true
+          PitchBend: true
+
   TSD:
     name: "TSD (Time-Shift Duration)"
     description: "Simple time-shift and duration encoding with minimal vocabulary"

@@ -22,7 +22,7 @@ MIDITOK_IMPORT_ERROR = None
 
 try:
     # Import the tokenizer classes
-    from miditok import REMI, TSD, MusicTokenizer, CPWord, Octuple
+    from miditok import REMI, TSD, MusicTokenizer, CPWord, Octuple, MIDILike
     from miditok.classes import TokSequence
     
     # Try to import symusic (required for MidiTok 3.x)
@@ -53,6 +53,7 @@ except ImportError as e:
     MusicTokenizer = None
     CPWord = None
     Octuple = None
+    MIDILike = None
     logging.warning(f"MidiTok not installed. Install with: pip install miditok")
     logging.warning(f"Import error details: {e}")
     
@@ -64,6 +65,7 @@ except Exception as e:
     MusicTokenizer = None
     CPWord = None
     Octuple = None
+    MIDILike = None
     logging.error(f"MidiTok import failed with unexpected error: {e}")
     import traceback
     logging.error(f"Traceback: {traceback.format_exc()}")
@@ -221,8 +223,9 @@ class TokenizerManager:
     
     STRATEGY_CLASSES = {
         "REMI": REMI,
+        "MIDI-Like": MIDILike,
         "TSD": TSD,
-        "Structured": MusicTokenizer,  # MusicTokenizer is the base for Structured in 3.x
+        "Structured": MusicTokenizer,
         "CPWord": CPWord,
         "Octuple": Octuple
     } if MIDITOK_AVAILABLE else {}
