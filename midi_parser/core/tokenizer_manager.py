@@ -333,7 +333,10 @@ class TokenizerManager:
             "pitch_range": config.pitch_range,
             "beat_res": {(0, 4): config.beat_resolution},
             "num_velocities": config.num_velocities,
-            "one_token_stream_for_programs": False, # Put everything in one vocab
+            "one_token_stream_for_programs": False, # One stream would put everything in one track, we need several distinct tracks
+            "use_tempos": True,
+            "use_time_signatures": True,
+            "use_programs": True,
         }
         
         # Enable metadata preservation features using MidiTok 3.x API
@@ -342,6 +345,8 @@ class TokenizerManager:
         # Always enable tempos for all strategies
         config_dict["use_tempos"] = True
         config_dict["num_tempos"] = 64 
+
+        config_dict["one_token_stream_for_programs"] = config.single_stream_mode
         
         # Always enable time signatures
         config_dict["use_time_signatures"] = True

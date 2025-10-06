@@ -22,6 +22,7 @@ class TokenizerConfig:
     pitch_range: Tuple[int, int] = (21, 109)  # A0 to C8
     beat_resolution: int = 4  # 16th note resolution
     num_velocities: int = 64  # Velocity quantization levels
+    max_seq_length: int = 2048
     additional_tokens: Dict[str, bool] = field(default_factory=lambda: {
         'Chord': True,
         'Rest': True,
@@ -31,7 +32,7 @@ class TokenizerConfig:
         'Pedal': False,
         'PitchBend': False,
     })
-    max_seq_length: int = 2048
+    single_stream_mode: bool = False
     
     def __post_init__(self):
         """Validate tokenizer configuration after initialization."""
@@ -160,7 +161,7 @@ class ValidationConfig:
 class MidiParserConfig:
     """Main configuration class that combines all sub-configurations."""
 
-    tokenization: str = "MIDI-Like"  # Default tokenization strategy
+    tokenization: str = "REMI"  # Default tokenization strategy
     
     tokenizer: TokenizerConfig = field(default_factory=TokenizerConfig)
     track_classification: TrackClassificationConfig = field(default_factory=TrackClassificationConfig)
