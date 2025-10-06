@@ -903,9 +903,9 @@ def diagnose_miditok_config(tokenizer: Any, strategy: str) -> None:
         
         # Don't warn about missing key signatures for MIDI-Like
         if not metadata_tokens['key_signatures'] and strategy != "MIDI-Like":
-            logger.warning("\nâš ï¸  WARNING: No key signature tokens found in vocabulary!")
+            logger.warning("\n⚠️  WARNING: No key signature tokens found in vocabulary!")
         elif not metadata_tokens['key_signatures']:
-            logger.info("\nâ„¹ï¸  Key signatures not supported by current tokenizer")
+            logger.info("\n⚠️  Key signatures not supported by current tokenizer")
             logger.warning("   This will cause key signatures to be lost during round-trip! This can be intended sometimes")
         
         if not metadata_tokens['time_signatures']:
