@@ -118,6 +118,8 @@ class RoundTripValidator:
         
         This is the main validation function that orchestrates the entire process.
         
+        Passes strategy parameter to comparator and tolerance checker.
+        
         Args:
             midi: Original MIDI file
             strategy: Tokenization strategy to test
@@ -161,8 +163,8 @@ class RoundTripValidator:
             metrics = self.midi_comparator.compare_files(
                 midi,
                 reconstructed_midi,
-                strategy,
-                detailed_report
+                strategy=strategy,
+                detailed=detailed_report
             )
             
             # Set additional metrics
@@ -170,7 +172,10 @@ class RoundTripValidator:
             metrics.processing_time = time.time() - start_time
             
             # Step 4: Apply tolerance checks
-            validation_result = self.tolerance_checker.check_tolerances(metrics)
+            validation_result = self.tolerance_checker.check_tolerances(
+                metrics,
+                strategy=strategy
+            )
             
             # Log summary
             if validation_result.is_valid:
@@ -246,8 +251,9 @@ class RoundTripValidator:
             
             # IMPORTANT: Use the cached TokSequence from tokenization
             # This preserves the multi-dimensional structure and track information
+            # Don't modify too much or shit will hit the fan
             if hasattr(self.tokenizer_manager, '_last_tok_sequence') and \
-            self.tokenizer_manager._last_tok_sequence is not None:
+               self.tokenizer_manager._last_tok_sequence is not None:
                 
                 logger.debug("Using cached TokSequence structure from tokenization")
                 tok_sequence = self.tokenizer_manager._last_tok_sequence

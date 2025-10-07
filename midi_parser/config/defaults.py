@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 class TokenizerConfig:
     """Configuration for MidiTok tokenizers."""
     pitch_range: Tuple[int, int] = (21, 109)  # A0 to C8
-    beat_resolution: int = 4  # 16th note resolution
+    beat_resolution: int = 8  # 16th note resolution
     num_velocities: int = 64  # Velocity quantization levels
     max_seq_length: int = 2048
     additional_tokens: Dict[str, bool] = field(default_factory=lambda: {

@@ -20,7 +20,7 @@ tokenization_strategies:
       - neural_music_generation
     config_overrides:
       tokenizer:
-        beat_resolution: 4
+        beat_resolution: 8
         num_velocities: 16
         additional_tokens:
           # Bar tokens

@@ -322,98 +322,71 @@ class TokenizerManager:
         config: TokenizerConfig
     ) -> Any:
         """
-        Build TokenizerConfig for MidiTok 3.x.
+        Build TokenizerConfig for MidiTok 3
         """
         from miditok import TokenizerConfig as MidiTokConfig
         
-        # Start with minimal required config
+        beat_res_dict = {(0, 4): config.beat_resolution}
+        
+        # For very high resolutions, maybe add additional ranges because this improves timing for longer notes
+        if config.beat_resolution >= 8:
+            beat_res_dict[(4, 8)] = max(4, config.beat_resolution // 2)  # Lower res for far beats
+        
         config_dict = {
             "pitch_range": config.pitch_range,
-            "beat_res": {(0, 4): config.beat_resolution},
+            "beat_res": beat_res_dict,
             "num_velocities": config.num_velocities,
             "one_token_stream_for_programs": config.single_stream_mode,
         }
         
-        # Bar tokens are very fucking important for REMI (the main strategy we'll use) to mark measure boundaries
-        # This is separate from time signatures - bars mark actual boundaries
-        config_dict["use_bars"] = True  # Enable bar tokens
+        # Bar tokens (critical for REMI, which is the main strategy)
+        config_dict["use_bars"] = True
         
-        # Tempo tokens - try multiple parameter names for compatibility
+        # Metadata
         config_dict["use_tempos"] = True
-        # Some versions use nb_tempos instead of num_tempos, hope we got the right one
         if hasattr(MidiTokConfig, 'nb_tempos'):
             config_dict["nb_tempos"] = 64
         else:
             config_dict["num_tempos"] = 64
         
-        # Time signature tokens
         config_dict["use_time_signatures"] = True
         
-        # Key signature tokens
-        # NOTE: Not all tokenizers support key signatures!
-        # REMI typically does NOT include key signatures, but MIDI-Like and Structured do support them
+        # Key signatures only for compatible strategies
         if strategy in ["MIDI-Like", "Structured", "Octuple"]:
             config_dict["use_key_signatures"] = True
-        else:
-            # For REMI and others, key signatures are NOT standard
-            # This is expected behavior, not a bug, note for self
-            logger.info(f"{strategy} does not support key signature tokens (this is normal)")
         
-        # Program tokens (instruments)
         config_dict["use_programs"] = True
         
-        # === Additional Tokens from Config ===
-        
-        # Chord tokens
+        # Additional tokens
         if config.additional_tokens.get("Chord", False):
             config_dict["use_chords"] = True
         
-        # Rest tokens commented out due to API issues in some MidiTok versions
-        # if config.additional_tokens.get("Rest", False):
-        #     config_dict["use_rests"] = True
-        
-        # Pedal tokens
         if config.additional_tokens.get("Pedal", False):
             config_dict["use_sustain_pedals"] = True
         
-        # Pitch bend tokens
         if config.additional_tokens.get("PitchBend", False):
             config_dict["use_pitch_bends"] = True
         
         try:
             miditok_config = MidiTokConfig(**config_dict)
             
-            logger.info(f"Created {strategy} config with:")
+            logger.info(f"Created {strategy} config:")
+            logger.info(f"  - Beat resolution: {config.beat_resolution} (dict: {beat_res_dict})")
             logger.info(f"  - Bars: {config_dict.get('use_bars', False)}")
             logger.info(f"  - Tempos: {config_dict.get('use_tempos', False)}")
-            logger.info(f"  - Time Signatures: {config_dict.get('use_time_signatures', False)}")
-            logger.info(f"  - Key Signatures: {config_dict.get('use_key_signatures', False)}")
-            logger.info(f"  - Programs: {config_dict.get('use_programs', False)}")
+            logger.info(f"  - Time Sigs: {config_dict.get('use_time_signatures', False)}")
+            logger.info(f"  - Key Sigs: {config_dict.get('use_key_signatures', False)}")
             
             return miditok_config
             
         except TypeError as e:
-            logger.warning(f"MidiTok config parameter error: {e}")
-            logger.warning("Falling back to minimal configuration")
-            
-            # Minimal fallback with just bars and basic tokens
+            logger.warning(f"MidiTok config error: {e}, using minimal config")
             minimal_dict = {
                 "pitch_range": config.pitch_range,
-                "beat_res": {(0, 4): config.beat_resolution},
+                "beat_res": beat_res_dict,
                 "num_velocities": config.num_velocities,
-                "use_bars": True,  # Still try to include bars
+                "use_bars": True,
                 "use_tempos": True,
-                "use_time_signatures": True,
-            }
-            return MidiTokConfig(**minimal_dict)
-            
-        except Exception as e:
-            logger.error(f"Failed to create MidiTok config: {e}")
-            # Last resort minimal config
-            minimal_dict = {
-                "pitch_range": config.pitch_range,
-                "beat_res": {(0, 4): config.beat_resolution},
-                "num_velocities": config.num_velocities,
             }
             return MidiTokConfig(**minimal_dict)
     

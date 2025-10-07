@@ -4,6 +4,8 @@ MIDI file comparison logic for round-trip validation.
 This module handles high-level comparison between original and reconstructed
 MIDI files, including track matching, global property comparison, and
 coordination of detailed note-level analysis.
+
+Strategy-aware key signature comparison to stop false warnings.
 """
 
 import logging
@@ -53,7 +55,7 @@ class MidiComparator:
         Args:
             original: Original MIDI file
             reconstructed: Reconstructed MIDI file
-            strategy: Tokenization strategy used
+            strategy: Tokenization strategy used (affects key signature handling)
             detailed: Whether to perform detailed note-level comparison
             
         Returns:
@@ -63,8 +65,8 @@ class MidiComparator:
         
         metrics = RoundTripMetrics(tokenization_strategy=strategy)
         
-        # Compare global properties
-        self._compare_global_properties(original, reconstructed, metrics)
+        # Compare global properties for each strategy
+        self._compare_global_properties(original, reconstructed, metrics, strategy)
         
         # Compare tracks
         metrics.track_comparisons = self._compare_tracks(
@@ -83,7 +85,8 @@ class MidiComparator:
         self,
         original: MidiFile,
         reconstructed: MidiFile,
-        metrics: RoundTripMetrics
+        metrics: RoundTripMetrics,
+        strategy: str = "REMI"
     ) -> None:
         """
         Compare global MIDI properties (tempo, time signatures, etc.).
@@ -92,6 +95,7 @@ class MidiComparator:
             original: Original MIDI file
             reconstructed: Reconstructed MIDI file
             metrics: Metrics object to update with warnings
+            strategy: Tokenization strategy (affects key signature handling)
         """
         # Compare PPQ (Pulses Per Quarter note)
         if original.ticks_per_beat != reconstructed.ticks_per_beat:
@@ -103,9 +107,9 @@ class MidiComparator:
         # Compare time signatures
         self._compare_time_signatures(original, reconstructed)
         
-        # Compare key signatures if available
+        # Compare key signatures if available (strategy-aware)
         if hasattr(original, 'key_signature_changes') and hasattr(reconstructed, 'key_signature_changes'):
-            self._compare_key_signatures(original, reconstructed)
+            self._compare_key_signatures(original, reconstructed, strategy)
     
     def _compare_tempo_changes(self, original: MidiFile, reconstructed: MidiFile) -> None:
         """Compare tempo changes between MIDI files."""
@@ -145,19 +149,57 @@ class MidiComparator:
                              f"{orig_sig.numerator}/{orig_sig.denominator} vs "
                              f"{recon_sig.numerator}/{recon_sig.denominator}")
     
-    def _compare_key_signatures(self, original: MidiFile, reconstructed: MidiFile) -> None:
-        """Compare key signature changes between MIDI files."""
+    # Strategy-aware key signature comparison
+    # Not all tokenization strategies support key signatures, this function applies logic to detect this
+    def _compare_key_signatures(
+        self, 
+        original: MidiFile, 
+        reconstructed: MidiFile,
+        strategy: str = "REMI"
+    ) -> None:
+        """
+        Compare key signature changes between MIDI files with strategy awareness.
+        
+        Some tokenization strategies (REMI, TSD, CPWord) do not support key signatures
+        by design. This method avoids false warnings for those strategies.
+        
+        Args:
+            original: Original MIDI file
+            reconstructed: Reconstructed MIDI file  
+            strategy: Tokenization strategy used
+        """
         orig_keys = original.key_signature_changes
         recon_keys = reconstructed.key_signature_changes
         
-        if len(orig_keys) != len(recon_keys):
-            logger.warning(f"Key signature count mismatch: {len(orig_keys)} vs {len(recon_keys)}")
+        # Strategies that don't support key signatures (by design)
+        strategies_without_key_sigs = ["REMI", "TSD", "CPWord"]
+        
+        if strategy in strategies_without_key_sigs:
+            # This is EXPECTED behavior for these strategies
+            if len(orig_keys) > 0:
+                logger.info(
+                    f"{strategy} tokenizer does not support key signature preservation. "
+                    f"Original MIDI had {len(orig_keys)} key signature(s) that cannot be preserved. "
+                    f"This is expected behavior and not an error."
+                )
+            # Don't log any warning - this is normal
             return
         
+        # For strategies that DO support key signatures (MIDI-Like, Structured, Octuple)
+        if len(orig_keys) != len(recon_keys):
+            logger.warning(
+                f"Key signature count mismatch for {strategy}: "
+                f"{len(orig_keys)} original vs {len(recon_keys)} reconstructed"
+            )
+            return
+        
+        # Compare individual key signatures
         for i, (orig_key, recon_key) in enumerate(zip(orig_keys, recon_keys)):
             if orig_key.key_number != recon_key.key_number:
-                logger.warning(f"Key signature {i} mismatch: "
-                             f"{orig_key.key_number} vs {recon_key.key_number}")
+                logger.warning(
+                    f"Key signature {i} mismatch: "
+                    f"{orig_key.key_number} vs {recon_key.key_number}"
+                )
     
     def _compare_tracks(
         self,

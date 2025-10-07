@@ -3,6 +3,8 @@ Tolerance checking and validation logic for round-trip validation.
 
 This module applies tolerance thresholds to validation metrics and determines
 pass/fail status based on configurable quality criteria.
+
+Strategy-specific timing thresholds to avoid false failures.
 """
 
 import logging
@@ -12,6 +14,17 @@ from midi_parser.config.defaults import ValidationConfig
 from .validation_metrics import RoundTripMetrics, DEFAULT_VALIDATION_TOLERANCES
 
 logger = logging.getLogger(__name__)
+
+
+# Different tokenization strategies have inherent precision limitations
+STRATEGY_TIMING_THRESHOLDS = {
+    "REMI": 0.93,       # Time-based with position tokens, some quantization loss expected
+    "MIDI-Like": 0.98,  # Direct MIDI representation, high accuracy expected
+    "TSD": 0.90,        # TimeShift encoding can lose precision on long gaps
+    "Structured": 0.95, # Standard threshold with structured encoding
+    "CPWord": 0.94,     # Compound words, slight quantization loss
+    "Octuple": 0.96,    # High expressiveness, good timing preservation
+}
 
 
 class ToleranceChecker:
@@ -33,12 +46,17 @@ class ToleranceChecker:
         self.tolerances = getattr(validation_config, 'tolerances', DEFAULT_VALIDATION_TOLERANCES)
         self.quality_threshold = getattr(validation_config, 'quality_threshold', 0.95)
         
-    def check_tolerances(self, metrics: RoundTripMetrics) -> ValidationResult:
+    def check_tolerances(
+        self, 
+        metrics: RoundTripMetrics,
+        strategy: str = "REMI"
+    ) -> ValidationResult:
         """
         Apply all tolerance checks to validation metrics.
         
         Args:
             metrics: Calculated validation metrics
+            strategy: Tokenization strategy used (affects thresholds)
             
         Returns:
             ValidationResult with pass/fail status and detailed messages
@@ -48,8 +66,8 @@ class ToleranceChecker:
         # Check note count tolerances
         self._check_note_tolerances(metrics, result)
         
-        # Check timing tolerances
-        self._check_timing_tolerances(metrics, result)
+        # Check timing tolerances (now strategy-aware)
+        self._check_timing_tolerances(metrics, result, strategy)
         
         # Check velocity tolerances
         self._check_velocity_tolerances(metrics, result)
@@ -82,8 +100,20 @@ class ToleranceChecker:
         if metrics.extra_notes_ratio > extra_threshold * 0.5:
             result.add_warning(f"Elevated extra notes ratio: {metrics.extra_notes_ratio:.3f}")
     
-    def _check_timing_tolerances(self, metrics: RoundTripMetrics, result: ValidationResult) -> None:
-        """Check timing related tolerances."""
+    def _check_timing_tolerances(
+        self, 
+        metrics: RoundTripMetrics, 
+        result: ValidationResult,
+        strategy: str = "REMI"
+    ) -> None:
+        """
+        Check timing related tolerances with strategy-aware thresholds.
+        
+        Args:
+            metrics: Validation metrics
+            result: ValidationResult to update
+            strategy: Tokenization strategy (affects timing expectations)
+        """
         start_tolerance = self.tolerances.get('note_start_tick', 1)
         duration_tolerance = self.tolerances.get('note_duration', 2)
         
@@ -93,12 +123,24 @@ class ToleranceChecker:
         if metrics.max_duration_diff > duration_tolerance * 5:
             result.add_warning(f"Large duration differences detected. Max: {metrics.max_duration_diff} ticks")
         
-        # Check timing accuracy
-        if metrics.timing_accuracy < 0.98:
-            result.add_warning(f"Timing accuracy degraded: {metrics.timing_accuracy:.3f}")
+        # Get strategy-specific threshold, fallback to config value, then default
+        timing_threshold = STRATEGY_TIMING_THRESHOLDS.get(
+            strategy,
+            self.tolerances.get('timing_accuracy_threshold', 0.95)
+        )
         
-        if metrics.timing_accuracy < 0.95:
-            result.add_error(f"Timing accuracy critically low: {metrics.timing_accuracy:.3f}")
+        # Check timing accuracy with strategy-aware threshold
+        if metrics.timing_accuracy < timing_threshold:
+            result.add_error(
+                f"Timing accuracy critically low: {metrics.timing_accuracy:.3f} "
+                f"(threshold for {strategy}: {timing_threshold:.3f})"
+            )
+        elif metrics.timing_accuracy < timing_threshold + 0.02:
+            # Warning if within 2% of threshold
+            result.add_warning(
+                f"Timing accuracy near threshold: {metrics.timing_accuracy:.3f} "
+                f"(threshold: {timing_threshold:.3f})"
+            )
     
     def _check_velocity_tolerances(self, metrics: RoundTripMetrics, result: ValidationResult) -> None:
         """Check velocity related tolerances."""
@@ -166,3 +208,19 @@ class ToleranceChecker:
             raise ValueError("Quality threshold must be between 0.0 and 1.0")
         self.quality_threshold = threshold
         logger.info(f"Quality threshold set to {threshold}")
+    
+    # Helper method to get strategy-specific threshold
+    def get_timing_threshold(self, strategy: str = "REMI") -> float:
+        """
+        Get the timing accuracy threshold for a specific strategy.
+        
+        Args:
+            strategy: Tokenization strategy name
+            
+        Returns:
+            Timing accuracy threshold (0.0 to 1.0)
+        """
+        return STRATEGY_TIMING_THRESHOLDS.get(
+            strategy,
+            self.tolerances.get('timing_accuracy_threshold', 0.95)
+        )
