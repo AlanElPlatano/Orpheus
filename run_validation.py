@@ -336,9 +336,9 @@ def main():
         print("\n🔍 Running validation tests...\n")
         
         result1 = validate_single_file()
-        # result2 = validate_multiple_files()
-        # result3 = validate_directory_with_report()
-        # result4 = generate_comparison_report()
+        result2 = validate_multiple_files()
+        result3 = validate_directory_with_report()
+        result4 = generate_comparison_report()
         get_optimization_suggestions()
         
         print("\n" + "=" * 60)

@@ -503,44 +503,85 @@ class StatisticalComparator:
                     u_stat, p_val = mannwhitneyu(orig_data, recon_data, alternative='two-sided')
                     setattr(tests, attr_name, (u_stat, p_val))
                 except Exception as e:
-                    logger.warning(f"Mann-Whitney test failed for {feature_name}: {e}")
+                    logger.debug(f"Mann-Whitney test failed for {feature_name}: {e}")
         
         # Paired tests (for matched samples)
         if len(orig_features.get('pitches', [])) > 0 and len(recon_features.get('pitches', [])) > 0:
             min_len = min(len(orig_features['pitches']), len(recon_features['pitches']))
             
             if min_len > 1:
-                # Wilcoxon signed-rank test
-                try:
-                    w_stat, p_val = stats.wilcoxon(
-                        orig_features['pitches'][:min_len],
-                        recon_features['pitches'][:min_len]
-                    )
-                    tests.wilcoxon_signed_rank = (w_stat, p_val)
-                except Exception as e:
-                    logger.warning(f"Wilcoxon test failed: {e}")
+                orig_matched = orig_features['pitches'][:min_len]
+                recon_matched = recon_features['pitches'][:min_len]
                 
-                # Paired t-test
+                # Wilcoxon signed-rank test with improved error handling
                 try:
-                    t_stat, p_val = stats.ttest_rel(
-                        orig_features['pitches'][:min_len],
-                        recon_features['pitches'][:min_len]
-                    )
-                    tests.paired_t_test = (t_stat, p_val)
+                    # Check if sequences are identical or nearly identical
+                    differences = orig_matched - recon_matched
+                    non_zero_diff = np.count_nonzero(differences)
+                    
+                    # Only proceed if there are enough non-zero differences
+                    if non_zero_diff > 1:
+                        # Use zero_method='wilcox' to handle zeros properly
+                        w_stat, p_val = stats.wilcoxon(
+                            orig_matched,
+                            recon_matched,
+                            zero_method='wilcox',
+                            alternative='two-sided'
+                        )
+                        tests.wilcoxon_signed_rank = (w_stat, p_val)
+                    else:
+                        # Sequences are too similar for meaningful test
+                        logger.debug(f"Wilcoxon test skipped: insufficient differences ({non_zero_diff} non-zero)")
+                        tests.wilcoxon_signed_rank = (0.0, 1.0)  # Perfect match
+                        
+                except ValueError as e:
+                    # Handle case where all differences are zero
+                    if "zero_method" in str(e).lower() or "all" in str(e).lower():
+                        logger.debug("Wilcoxon test skipped: all differences are zero (perfect match)")
+                        tests.wilcoxon_signed_rank = (0.0, 1.0)
+                    else:
+                        logger.debug(f"Wilcoxon test failed: {e}")
+                        tests.wilcoxon_signed_rank = (0.0, 0.0)
+                        
                 except Exception as e:
-                    logger.warning(f"Paired t-test failed: {e}")
+                    logger.debug(f"Wilcoxon test failed: {e}")
+                    tests.wilcoxon_signed_rank = (0.0, 0.0)
+                
+                # Paired t-test with error handling
+                try:
+                    # Check for zero variance
+                    if np.std(differences) > 1e-10:
+                        t_stat, p_val = stats.ttest_rel(orig_matched, recon_matched)
+                        tests.paired_t_test = (t_stat, p_val)
+                    else:
+                        logger.debug("Paired t-test skipped: zero variance (perfect match)")
+                        tests.paired_t_test = (0.0, 1.0)
+                        
+                except Exception as e:
+                    logger.debug(f"Paired t-test failed: {e}")
+                    tests.paired_t_test = (0.0, 0.0)
         
-        # F-test for variance
+        # F-test for variance with improved handling
         if len(orig_features.get('pitches', [])) > 1 and len(recon_features.get('pitches', [])) > 1:
-            var_orig = np.var(orig_features['pitches'])
-            var_recon = np.var(recon_features['pitches'])
-            
-            if var_orig > 0 and var_recon > 0:
-                f_stat = var_orig / var_recon
-                df1 = len(orig_features['pitches']) - 1
-                df2 = len(recon_features['pitches']) - 1
-                p_val = 2 * min(stats.f.cdf(f_stat, df1, df2), 1 - stats.f.cdf(f_stat, df1, df2))
-                tests.f_test_variance = (f_stat, p_val)
+            try:
+                var_orig = np.var(orig_features['pitches'], ddof=1)
+                var_recon = np.var(recon_features['pitches'], ddof=1)
+                
+                # Check for zero or near-zero variance
+                if var_orig > 1e-10 and var_recon > 1e-10:
+                    f_stat = var_orig / var_recon
+                    df1 = len(orig_features['pitches']) - 1
+                    df2 = len(recon_features['pitches']) - 1
+                    p_val = 2 * min(stats.f.cdf(f_stat, df1, df2), 
+                                1 - stats.f.cdf(f_stat, df1, df2))
+                    tests.f_test_variance = (f_stat, p_val)
+                else:
+                    logger.debug("F-test skipped: zero variance detected")
+                    tests.f_test_variance = (1.0, 1.0)  # Equal variances
+                    
+            except Exception as e:
+                logger.debug(f"F-test failed: {e}")
+                tests.f_test_variance = (0.0, 0.0)
         
         # Determine if differences are significant
         p_values = [
@@ -551,8 +592,14 @@ class StatisticalComparator:
             tests.paired_t_test[1] if tests.paired_t_test[1] > 0 else 1.0
         ]
         
-        significant_tests = sum(1 for p in p_values if p < self.alpha and p > 0)
-        tests.significant_difference = significant_tests > len(p_values) / 2
+        # Filter out invalid p-values
+        valid_p_values = [p for p in p_values if p > 0]
+        
+        if valid_p_values:
+            significant_tests = sum(1 for p in valid_p_values if p < self.alpha)
+            tests.significant_difference = significant_tests > len(valid_p_values) / 2
+        else:
+            tests.significant_difference = False
         
         return tests
     
