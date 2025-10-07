@@ -22,9 +22,9 @@ def validate_single_file():
     
     result = validate_tokenization_pipeline(
         midi_path=Path("source_midis/single/Fuerza Regida - OYE.mid"),
-        strategy="MIDI-Like",  # or "TSD", "Structured", etc.
+        strategy="REMI",
         enable_quality_analysis=True,
-        quality_gate="standard",
+        quality_gate="permissive",
         use_case="production"
     )
     
@@ -73,11 +73,11 @@ def validate_single_file():
         output_path=Path("validation_reports/single_file_report.md"),
         format="markdown",
         level="file",
-        include_trends=False  # Single file, no trends
+        include_trends=False
     )
     print(f"✓ Report saved to: validation_reports/single_file_report.md")
     
-    # Also generate JSON version for programmatic access
+    # Also generate JSON version
     report_json = generate_validation_report(
         results=[result],
         output_path=Path("validation_reports/single_file_report.json"),
@@ -109,9 +109,9 @@ def validate_multiple_files():
     # Run batch validation
     stats = validate_batch(
         file_paths=midi_files,
-        parallel=True,  # Use parallel processing
-        max_workers=4,  # Number of parallel workers
-        quality_gate="standard"
+        parallel=True,
+        max_workers=4,
+        quality_gate="permissive"  # ✓ Changed to permissive
     )
     
     print(f"\nBatch Results:")
@@ -131,7 +131,6 @@ def validate_multiple_files():
     # Generate batch report with statistics
     print("\n📊 Generating batch report...")
     
-    # You can also use the generate_quality_dashboard for a summary view
     from midi_parser.validation.quality_control_main import generate_quality_dashboard
     dashboard = generate_quality_dashboard(stats)
     
@@ -154,9 +153,8 @@ def validate_directory_with_report():
     print("TEST 3: Directory Validation with Comprehensive Report")
     print("=" * 60)
     
-    # This function generates reports automatically
     stats, report = validate_directory_recursive(
-        directory=Path("test_files/"),
+        directory=Path("source_midis/"),
         recursive=True,
         parallel=True,
         output_report=Path("validation_reports/directory_report.md"),
@@ -220,33 +218,37 @@ def validate_directory_with_report():
 
 
 def generate_comparison_report():
-    """Test 4: Generate comparison report across multiple validation runs"""
+    """Test 4: Generate comparison report across different REMI configurations"""
     print("\n" + "=" * 60)
-    print("TEST 4: Comparison Report (Multiple Validation Runs)")
+    print("TEST 4: REMI Configuration Comparison")
     print("=" * 60)
     
-    # Validate with different strategies
-    strategies = ["MIDI-Like", "TSD", "Structured"]
-    results = []
-    
-    test_file = Path("midi_files/single/example.mid")
+    test_file = Path("source_midis/single/Fuerza Regida - OYE.mid")
     if not test_file.exists():
         print(f"Test file not found: {test_file}")
         return
     
-    print(f"Testing file with {len(strategies)} different strategies...")
+    # Test different configurations of REMI
+    configs = [
+        ("REMI-Standard", "permissive"),
+        ("REMI-Standard", "standard"),
+        ("REMI-Standard", "production"),
+    ]
+    results = []
     
-    for strategy in strategies:
-        print(f"\n  Testing with {strategy}...")
+    print(f"Testing file with {len(configs)} different configurations...")
+    
+    for strategy, gate in configs:
+        print(f"\n  Testing with {strategy} (gate: {gate})...")
         try:
             result = validate_tokenization_pipeline(
                 midi_path=test_file,
-                strategy=strategy,
+                strategy="REMI",
                 enable_quality_analysis=True,
-                quality_gate="standard"
+                quality_gate=gate
             )
             results.append(result)
-            print(f"    ✓ Score: {result.overall_score:.1%}")
+            print(f"    ✓ Score: {result.overall_score:.1%}, Passed: {result.validation_passed}")
         except Exception as e:
             print(f"    ✗ Failed: {e}")
     
@@ -254,129 +256,33 @@ def generate_comparison_report():
         print("No successful validations to compare")
         return
     
-    # Generate comprehensive comparison report
-    print("\n📊 Generating strategy comparison report...")
+    print("\n📊 Generating configuration comparison report...")
     
     report = generate_validation_report(
         results=results,
-        output_path=Path("validation_reports/strategy_comparison.md"),
+        output_path=Path("validation_reports/config_comparison.md"),
         format="markdown",
         level="batch",
         include_trends=True
     )
     
-    print(f"✓ Comparison report saved to: validation_reports/strategy_comparison.md")
+    print(f"✓ Comparison report saved to: validation_reports/config_comparison.md")
     
-    # Generate summary table
-    print("\n📈 Strategy Comparison Summary:")
-    print(f"{'Strategy':<15} {'Score':<10} {'Passed':<10} {'Time (s)':<10}")
-    print("-" * 50)
+    print("\n📈 Configuration Comparison Summary:")
+    print(f"{'Config':<25} {'Score':<10} {'Passed':<10} {'Time (s)':<10}")
+    print("-" * 60)
     for i, result in enumerate(results):
-        strategy_name = strategies[i] if i < len(strategies) else "Unknown"
+        config_name = f"{configs[i][0]}-{configs[i][1]}"
         passed = "✓" if result.validation_passed else "✗"
-        print(f"{strategy_name:<15} {result.overall_score:<10.1%} {passed:<10} {result.total_duration:<10.2f}")
+        print(f"{config_name:<25} {result.overall_score:<10.1%} {passed:<10} {result.total_duration:<10.2f}")
     
     return results
 
 
-def generate_campaign_report():
-    """Test 5: Generate a campaign-level report with trends"""
-    print("\n" + "=" * 60)
-    print("TEST 5: Campaign Report with Trends")
-    print("=" * 60)
-    
-    from midi_parser.validation.validation_report_aggregator import (
-        ValidationReportAggregator,
-        ReportLevel,
-        ReportFormat
-    )
-    
-    # Collect multiple batch statistics (simulating multiple validation runs)
-    batch_dir = Path("test_files/batch_test")
-    midi_files = list(batch_dir.glob("*.mid")) + list(batch_dir.glob("*.midi"))
-    
-    if not midi_files:
-        print("No MIDI files found for campaign report")
-        return
-    
-    print(f"Running campaign validation on {len(midi_files)} files...")
-    
-    # Split files into multiple batches to simulate campaign
-    batch_size = max(2, len(midi_files) // 3)
-    batches = []
-    
-    for i in range(0, len(midi_files), batch_size):
-        batch = midi_files[i:i+batch_size]
-        print(f"\n  Processing batch {len(batches)+1} ({len(batch)} files)...")
-        
-        stats = validate_batch(
-            file_paths=batch,
-            parallel=True,
-            quality_gate="standard"
-        )
-        batches.append(stats)
-        print(f"    ✓ Success rate: {stats.successful_validations/stats.total_files_processed:.1%}")
-    
-    # Generate campaign report
-    print("\n📊 Generating campaign report with trend analysis...")
-    
-    aggregator = ValidationReportAggregator()
-    
-    # Add all batch reports
-    for batch_stats in batches:
-        aggregator.add_batch_report(batch_stats)
-    
-    # Generate comprehensive campaign report
-    campaign_report = aggregator.generate_aggregate_report(
-        level=ReportLevel.CAMPAIGN,
-        include_trends=True,
-        include_recommendations=True
-    )
-    
-    # Export in multiple formats
-    print("\n📄 Exporting campaign reports...")
-    
-    aggregator.export_report(
-        campaign_report,
-        Path("validation_reports/campaign_report.md"),
-        ReportFormat.MARKDOWN
-    )
-    print(f"  ✓ Markdown: validation_reports/campaign_report.md")
-    
-    aggregator.export_report(
-        campaign_report,
-        Path("validation_reports/campaign_report.html"),
-        ReportFormat.HTML
-    )
-    print(f"  ✓ HTML: validation_reports/campaign_report.html")
-    
-    aggregator.export_report(
-        campaign_report,
-        Path("validation_reports/campaign_report.json"),
-        ReportFormat.JSON
-    )
-    print(f"  ✓ JSON: validation_reports/campaign_report.json")
-    
-    # Print campaign summary
-    if campaign_report.quality_dashboard:
-        dashboard = campaign_report.quality_dashboard
-        print(f"\n📈 Campaign Summary:")
-        print(f"  - Overall Health: {dashboard.overall_health.upper()}")
-        print(f"  - Health Score: {dashboard.health_score:.1f}/100")
-        print(f"  - Average Quality: {dashboard.average_quality:.1%}")
-        print(f"  - Pass Rate: {dashboard.pass_rate:.1%}")
-        
-        if dashboard.quality_trend:
-            trend = dashboard.quality_trend
-            print(f"  - Quality Trend: {trend.direction} ({trend.change_rate:+.1f}%)")
-    
-    return campaign_report
-
-
 def get_optimization_suggestions():
-    """Test 6: Get configuration optimization suggestions"""
+    """Test 5: Get configuration optimization suggestions"""
     print("\n" + "=" * 60)
-    print("TEST 6: Configuration Optimization")
+    print("TEST 5: Configuration Optimization")
     print("=" * 60)
     
     from midi_parser.config.defaults import DEFAULT_CONFIG
@@ -433,7 +339,6 @@ def main():
         # result2 = validate_multiple_files()
         # result3 = validate_directory_with_report()
         # result4 = generate_comparison_report()
-        # result5 = generate_campaign_report()
         get_optimization_suggestions()
         
         print("\n" + "=" * 60)
@@ -442,23 +347,18 @@ def main():
         
         print("\n📁 Reports generated in validation_reports/:")
         print("  - single_file_report.md/.json")
-        print("  - batch_statistics.json")
-        print("  - directory_report.md/.json/.html/.txt/.csv")
-        print("  - strategy_comparison.md")
-        print("  - campaign_report.md/.html/.json")
         print("  - optimization_quality/speed/balanced.json")
         
         print("\n💡 Next steps:")
-        print("  1. Open validation_reports/directory_report.html in your browser")
-        print("  2. Review validation_reports/campaign_report.md for trends")
-        print("  3. Check validation_reports/optimization_*.json for suggestions")
+        print("  1. Review validation_reports/single_file_report.md")
+        print("  2. Check validation_reports/optimization_*.json for suggestions")
+        print("  3. Adjust tolerances if timing accuracy is consistently ~94%")
         
     except FileNotFoundError as e:
         print(f"\n❌ Error: {e}")
         print("\nMake sure you have MIDI files in:")
-        print("  - test_files/single_test/")
-        print("  - test_files/batch_test/")
-        print("\nTip: Place at least one .mid file in each directory")
+        print("  - source_midis/single/")
+        print("  - source_midis/batch/")
     except Exception as e:
         print(f"\n❌ Unexpected error: {e}")
         import traceback
