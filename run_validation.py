@@ -56,7 +56,7 @@ def validate_single_file():
             print(f"  - {error}")
     
     if result.warnings:
-        print(f"\n⚠️  Warnings ({len(result.warnings)}):")
+        print(f"\n⚠️ Warnings ({len(result.warnings)}):")
         for warning in result.warnings[:3]:
             print(f"  - {warning}")
     
@@ -111,7 +111,7 @@ def validate_multiple_files():
         file_paths=midi_files,
         parallel=True,
         max_workers=4,
-        quality_gate="permissive"  # ✓ Changed to permissive
+        quality_gate="permissive"
     )
     
     print(f"\nBatch Results:")
@@ -180,13 +180,16 @@ def validate_directory_with_report():
         # HTML format (for viewing in browser)
         from midi_parser.validation.validation_report_aggregator import (
             ValidationReportAggregator,
-            ReportFormat
+            ReportFormat,
+            ReportLevel
         )
         aggregator = ValidationReportAggregator()
         aggregator.add_batch_report(stats)
         
+        report_level = ReportLevel.BATCH if hasattr(report, 'level') else ReportLevel.SUMMARY
+        
         html_report = aggregator.generate_aggregate_report(
-            level="batch" if hasattr(report, 'level') else "summary",
+            level=report_level,  # ✓ Pass enum, not string
             include_trends=True,
             include_recommendations=True
         )
@@ -333,7 +336,7 @@ def main():
     
     try:
         # Run tests
-        print("\n🔍 Running validation tests...\n")
+        print("\n🚀 Running validation tests...\n")
         
         result1 = validate_single_file()
         result2 = validate_multiple_files()
