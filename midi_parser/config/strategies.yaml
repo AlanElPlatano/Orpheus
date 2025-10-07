@@ -23,14 +23,16 @@ tokenization_strategies:
         beat_resolution: 4
         num_velocities: 16
         additional_tokens:
+          # Bar tokens
+          Bar: true                
           Chord: true
           Rest: true
           Tempo: true
           TimeSignature: true
-          'KeySignature': True
           Program: true
           Pedal: false
           PitchBend: false
+          # KeySignature is NOT supported by REMI
 
   MIDI-Like:
     name: "MIDI-Like"
@@ -45,20 +47,21 @@ tokenization_strategies:
       - faithful_conversion
       - metadata_critical
       - time_signature_preservation
-      - key_signature_preservation
+      - key_signature_preservation  # MIDI-Like actually supports key signatures (contrary to REMI)
     config_overrides:
       tokenizer:
         beat_resolution: 4
         num_velocities: 64
         additional_tokens:
-          Chord: false
-          Rest: false
+          Chord: false         # MIDI-Like can't use chord abstraction
+          Rest: false          
           Tempo: true
           TimeSignature: true
-          KeySignature: true
+          KeySignature: true   
           Program: true
           Pedal: true
           PitchBend: true
+          # Note: Bar tokens not used in MIDI-Like (uses absolute timing) which is why we will be using REMI almost exclusively
 
   TSD:
     name: "TSD (Time-Shift Duration)"

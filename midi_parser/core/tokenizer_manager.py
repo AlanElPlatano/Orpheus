@@ -323,8 +323,6 @@ class TokenizerManager:
     ) -> Any:
         """
         Build TokenizerConfig for MidiTok 3.x.
-        
-        Simplified approach that works with MidiTok 3.x actual API.
         """
         from miditok import TokenizerConfig as MidiTokConfig
         
@@ -333,62 +331,79 @@ class TokenizerManager:
             "pitch_range": config.pitch_range,
             "beat_res": {(0, 4): config.beat_resolution},
             "num_velocities": config.num_velocities,
-            "one_token_stream_for_programs": False, # One stream would put everything in one track, we need several distinct tracks
-            "use_tempos": True,
-            "use_time_signatures": True,
-            "use_programs": True,
+            "one_token_stream_for_programs": config.single_stream_mode,
         }
         
-        # Enable metadata preservation features using MidiTok 3.x API
-        # These are boolean flags, not special_tokens
+        # Bar tokens are very fucking important for REMI (the main strategy we'll use) to mark measure boundaries
+        # This is separate from time signatures - bars mark actual boundaries
+        config_dict["use_bars"] = True  # Enable bar tokens
         
-        # Always enable tempos for all strategies
+        # Tempo tokens - try multiple parameter names for compatibility
         config_dict["use_tempos"] = True
-        config_dict["num_tempos"] = 64 
-
-        config_dict["one_token_stream_for_programs"] = config.single_stream_mode
+        # Some versions use nb_tempos instead of num_tempos, hope we got the right one
+        if hasattr(MidiTokConfig, 'nb_tempos'):
+            config_dict["nb_tempos"] = 64
+        else:
+            config_dict["num_tempos"] = 64
         
-        # Always enable time signatures
+        # Time signature tokens
         config_dict["use_time_signatures"] = True
         
-        # CRITICAL: Always enable key signatures for proper metadata preservation
-        config_dict["use_key_signatures"] = True
+        # Key signature tokens
+        # NOTE: Not all tokenizers support key signatures!
+        # REMI typically does NOT include key signatures, but MIDI-Like and Structured do support them
+        if strategy in ["MIDI-Like", "Structured", "Octuple"]:
+            config_dict["use_key_signatures"] = True
+        else:
+            # For REMI and others, key signatures are NOT standard
+            # This is expected behavior, not a bug, note for self
+            logger.info(f"{strategy} does not support key signature tokens (this is normal)")
         
-        # Always enable programs (instruments)
+        # Program tokens (instruments)
         config_dict["use_programs"] = True
         
-        # Enable chords if requested
+        # === Additional Tokens from Config ===
+        
+        # Chord tokens
         if config.additional_tokens.get("Chord", False):
             config_dict["use_chords"] = True
         
-        # NOTE: use_rests is commented out due to MidiTok 3.x API compatibility issues
-        # Enable rests if requested
+        # Rest tokens commented out due to API issues in some MidiTok versions
         # if config.additional_tokens.get("Rest", False):
         #     config_dict["use_rests"] = True
         
-        # Enable pedal if requested
+        # Pedal tokens
         if config.additional_tokens.get("Pedal", False):
             config_dict["use_sustain_pedals"] = True
         
-        # Enable pitch bend if requested
+        # Pitch bend tokens
         if config.additional_tokens.get("PitchBend", False):
             config_dict["use_pitch_bends"] = True
         
         try:
             miditok_config = MidiTokConfig(**config_dict)
-            logger.info(f"Created {strategy} config: tempos={config_dict['use_tempos']}, "
-                    f"time_sigs={config_dict['use_time_signatures']}, "
-                    f"key_sigs={config_dict['use_key_signatures']}, "
-                    f"programs={config_dict['use_programs']}")
+            
+            logger.info(f"Created {strategy} config with:")
+            logger.info(f"  - Bars: {config_dict.get('use_bars', False)}")
+            logger.info(f"  - Tempos: {config_dict.get('use_tempos', False)}")
+            logger.info(f"  - Time Signatures: {config_dict.get('use_time_signatures', False)}")
+            logger.info(f"  - Key Signatures: {config_dict.get('use_key_signatures', False)}")
+            logger.info(f"  - Programs: {config_dict.get('use_programs', False)}")
+            
             return miditok_config
             
         except TypeError as e:
             logger.warning(f"MidiTok config parameter error: {e}")
-            # Try even more minimal config
+            logger.warning("Falling back to minimal configuration")
+            
+            # Minimal fallback with just bars and basic tokens
             minimal_dict = {
                 "pitch_range": config.pitch_range,
                 "beat_res": {(0, 4): config.beat_resolution},
                 "num_velocities": config.num_velocities,
+                "use_bars": True,  # Still try to include bars
+                "use_tempos": True,
+                "use_time_signatures": True,
             }
             return MidiTokConfig(**minimal_dict)
             
@@ -834,92 +849,156 @@ def diagnose_miditok_config(tokenizer: Any, strategy: str) -> None:
     logger.info(f"MIDITOK {strategy} CONFIGURATION DIAGNOSIS")
     logger.info(f"{'='*60}")
     
-    if hasattr(tokenizer, 'config'):
-        cfg = tokenizer.config
-        logger.info(f"Has config object: {type(cfg)}")
-        
-        # Check what features are enabled
-        features = {
-            'use_tempos': getattr(cfg, 'use_tempos', None),
-            'use_time_signatures': getattr(cfg, 'use_time_signatures', None),
-            'use_key_signatures': getattr(cfg, 'use_key_signatures', None),
-            'use_programs': getattr(cfg, 'use_programs', None),
-            'use_chords': getattr(cfg, 'use_chords', None),
-            'use_rests': getattr(cfg, 'use_rests', None),
-            'use_sustain_pedals': getattr(cfg, 'use_sustain_pedals', None),
-            'use_pitch_bends': getattr(cfg, 'use_pitch_bends', None),
-            'nb_tempos': getattr(cfg, 'nb_tempos', None),
-            'num_velocities': getattr(cfg, 'num_velocities', None),
-        }
-        
-        logger.info("\nFeatures enabled:")
-        for feature, value in features.items():
-            status = "✓" if value else "✗"
-            logger.info(f"  {status} {feature}: {value}")
-    else:
+    if not hasattr(tokenizer, 'config'):
         logger.warning(f"Tokenizer has no config attribute!")
+        return
+    
+    cfg = tokenizer.config
+    logger.info(f"Has config object: {type(cfg)}")
+    
+    # Define expected features per strategy
+    strategy_features = {
+        "REMI": {
+            "critical": ["use_bars", "use_tempos", "use_time_signatures", "use_programs"],
+            "optional": ["use_chords"],
+            "not_supported": ["use_key_signatures"]  # REMI doesn't support key sigs
+        },
+        "MIDI-Like": {
+            "critical": ["use_tempos", "use_time_signatures", "use_key_signatures", "use_programs"],
+            "optional": ["use_sustain_pedals", "use_pitch_bends"],
+            "not_supported": ["use_bars"]  # MIDI-Like doesn't use bar tokens
+        },
+        "TSD": {
+            "critical": ["use_tempos", "use_programs"],
+            "optional": [],
+            "not_supported": ["use_key_signatures", "use_time_signatures"]
+        },
+        # Add more strategies as needed
+    }
+    
+    expected = strategy_features.get(strategy, {
+        "critical": ["use_tempos", "use_programs"],
+        "optional": ["use_time_signatures"],
+        "not_supported": []
+    })
+
+    # I know many people despise using emojis for prints because it looks AI generated but i don't care
+    # It is mad useful for skimming through logs for lots of files
+    
+    # Check critical features
+    logger.info("\n🔴 Critical Features (must be enabled):")
+    for feature in expected["critical"]:
+        value = getattr(cfg, feature, None)
+        status = "✓" if value else "✗"
+        logger.info(f"  {status} {feature}: {value}")
+    
+    # Check optional features
+    if expected["optional"]:
+        logger.info("\n🟡 Optional Features:")
+        for feature in expected["optional"]:
+            value = getattr(cfg, feature, None)
+            status = "✓" if value else "○"
+            logger.info(f"  {status} {feature}: {value}")
+    
+    # Check unsupported features
+    if expected["not_supported"]:
+        logger.info("\n⚪ Not Supported by this Strategy:")
+        for feature in expected["not_supported"]:
+            value = getattr(cfg, feature, None)
+            if value:
+                logger.warning(f"  ⚠️  {feature}: {value} (enabled but not supported!)")
+            else:
+                logger.info(f"  ○ {feature}: {value} (correctly disabled)")
     
     # Check vocabulary
     if hasattr(tokenizer, 'vocab'):
         vocab = tokenizer.vocab
         
-        # Handle both single vocab (dict) and multi-vocab (list of dicts)
-        vocab_list = []
-        if isinstance(vocab, dict):
-            vocab_list = [vocab]
-            logger.info(f"\nVocabulary type: Single vocabulary")
-            logger.info(f"Vocabulary size: {len(vocab)}")
-        elif isinstance(vocab, list):
-            vocab_list = vocab
-            logger.info(f"\nVocabulary type: Multi-vocabulary ({len(vocab_list)} vocabs)")
-            for i, v in enumerate(vocab_list):
-                logger.info(f"  Vocab {i}: {len(v)} tokens")
-        else:
-            logger.warning(f"Unknown vocab type: {type(vocab)}")
-            return
+        if isinstance(vocab, list):
+            total_tokens = sum(len(v) for v in vocab if isinstance(v, dict))
+            logger.info(f"\nVocabulary: Multi-vocab ({len(vocab)} vocabs, {total_tokens} total tokens)")
+        elif isinstance(vocab, dict):
+            logger.info(f"\nVocabulary: Single vocab ({len(vocab)} tokens)")
         
-        # Sample some tokens to see what's included
-        metadata_tokens = {
-            'time_signatures': [],
-            'key_signatures': [],  # ADDED
-            'tempos': [],
-            'programs': []
+        # Sample vocabulary to verify tokens are present
+        sample_searches = {
+            'bars': ['bar', 'measure'],
+            'time_signatures': ['timesignature', 'time_signature', 'timesig'],
+            'tempos': ['tempo', 'bpm'],
+            'key_signatures': ['keysignature', 'key_signature', 'keysig'],
+            'programs': ['program', 'instrument']
         }
         
-        for token_str in list(vocab.keys())[:100]:  # Check more tokens
-            token_lower = str(token_str).lower()
+        logger.info("\n🔍 Vocabulary Token Search:")
+        
+        # Flatten vocab if needed
+        flat_vocab = {}
+        if isinstance(vocab, list):
+            for i, v in enumerate(vocab):
+                if isinstance(v, dict):
+                    for token, idx in v.items():
+                        flat_vocab[f"v{i}_{token}"] = idx
+        elif isinstance(vocab, dict):
+            flat_vocab = vocab
+        
+        vocab_keys_lower = [str(k).lower() for k in flat_vocab.keys()]
+        
+        for category, search_terms in sample_searches.items():
+            found_tokens = []
+            for term in search_terms:
+                matching = [k for k in vocab_keys_lower if term in k]
+                found_tokens.extend(matching[:3])  # Limit samples
             
-            if 'key' in token_lower and 'signature' in token_lower:
-                metadata_tokens['key_signatures'].append(token_str)
-            elif 'time' in token_lower and 'signature' in token_lower:
-                metadata_tokens['time_signatures'].append(token_str)
-            elif 'tempo' in token_lower:
-                metadata_tokens['tempos'].append(token_str)
-            elif 'program' in token_lower:
-                metadata_tokens['programs'].append(token_str)
-        
-        logger.info("\nMetadata tokens found:")
-        for category, tokens in metadata_tokens.items():
-            count = len(tokens)
-            status = "✓" if count > 0 else "✗"
-            logger.info(f"  {status} {category}: {count} tokens")
-            if tokens:
-                logger.info(f"      Sample: {tokens[:3]}")
-        
-        # Don't warn about missing key signatures for MIDI-Like
-        if not metadata_tokens['key_signatures'] and strategy != "MIDI-Like":
-            logger.warning("\n⚠️  WARNING: No key signature tokens found in vocabulary!")
-        elif not metadata_tokens['key_signatures']:
-            logger.info("\n⚠️  Key signatures not supported by current tokenizer")
-            logger.warning("   This will cause key signatures to be lost during round-trip! This can be intended sometimes")
-        
-        if not metadata_tokens['time_signatures']:
-            logger.warning("\n⚠️  WARNING: No time signature tokens found in vocabulary!")
-        
-        if not metadata_tokens['tempos']:
-            logger.warning("\n⚠️  WARNING: No tempo tokens found in vocabulary!")
+            found_tokens = list(set(found_tokens))[:3]  # Unique, limit to 3
+            
+            if found_tokens:
+                logger.info(f"  ✓ {category}: {found_tokens}")
+            else:
+                # Check if this is expected
+                feature_name = f"use_{category}"
+                is_critical = feature_name in expected["critical"]
+                is_unsupported = feature_name in expected["not_supported"]
+                
+                if is_unsupported:
+                    logger.info(f"  ○ {category}: (not supported by {strategy})")
+                elif is_critical:
+                    logger.warning(f"  ✗ {category}: MISSING (critical for {strategy}!)")
+                else:
+                    logger.info(f"  ○ {category}: not found (optional)")
     
     logger.info(f"{'='*60}\n")
+
+def validate_bar_tokens_present(tokenizer: Any) -> bool:
+    """
+    Check if bar/measure tokens are actually present in the vocabulary.
+    
+    Returns:
+        True if bar tokens are found, False otherwise
+    """
+    if not hasattr(tokenizer, 'vocab'):
+        return False
+    
+    vocab = tokenizer.vocab
+    
+    # Flatten vocab if needed
+    if isinstance(vocab, list):
+        all_tokens = []
+        for v in vocab:
+            if isinstance(v, dict):
+                all_tokens.extend(str(k).lower() for k in v.keys())
+    elif isinstance(vocab, dict):
+        all_tokens = [str(k).lower() for k in vocab.keys()]
+    else:
+        return False
+    
+    # Search for bar-related tokens
+    bar_keywords = ['bar', 'measure', 'bar_', 'measure_']
+    has_bar_tokens = any(
+        any(keyword in token for keyword in bar_keywords)
+        for token in all_tokens
+    )
+    
+    return has_bar_tokens
 
 def create_adaptive_tokenizer(
     midi: MidiFile,
