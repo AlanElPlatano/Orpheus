@@ -251,10 +251,11 @@ def get_available_genres() -> List[str]:
     Get list of available genre presets from YAML config.
     
     Returns:
-        List of genre names
+        List of genre names (empty if no genre presets defined)
     """
     yaml_data = _load_strategies_yaml()
-    return list(yaml_data.get('genre_presets', {}).keys())
+    genre_presets = yaml_data.get('genre_presets', {})
+    return list(genre_presets.keys()) if genre_presets else []
 
 def get_available_use_cases() -> List[str]:
     """
@@ -271,55 +272,74 @@ def get_available_instruments() -> List[str]:
     Get list of available instrument presets from YAML config.
     
     Returns:
-        List of instrument preset names
+        List of instrument preset names (empty if no instrument presets defined)
     """
     yaml_data = _load_strategies_yaml()
-    return list(yaml_data.get('instrument_presets', {}).keys())
+    instrument_presets = yaml_data.get('instrument_presets', {})
+    return list(instrument_presets.keys()) if instrument_presets else []
 
 def get_available_complexity_levels() -> List[str]:
     """
     Get list of available complexity level presets from YAML config.
     
     Returns:
-        List of complexity level names
+        List of complexity level names (empty if no complexity presets defined)
     """
     yaml_data = _load_strategies_yaml()
-    return list(yaml_data.get('complexity_presets', {}).keys())
+    complexity_presets = yaml_data.get('complexity_presets', {})
+    return list(complexity_presets.keys()) if complexity_presets else []
 
 def get_available_templates() -> List[str]:
     """
     Get list of available configuration templates from YAML config.
     
     Returns:
-        List of template names
+        List of template names (empty if no templates defined)
     """
     yaml_data = _load_strategies_yaml()
-    return list(yaml_data.get('templates', {}).keys())
+    templates = yaml_data.get('templates', {})
+    return list(templates.keys()) if templates else []
 
 def get_preset_config(preset_type: str, preset_name: str) -> Dict[str, Any]:
     """
     Get configuration for a specific preset.
     
     Args:
-        preset_type: Type of preset ('genre_presets', 'use_case_presets', etc.)
+        preset_type: Type of preset ('use_case_presets', 'genre_presets', etc.)
         preset_name: Name of the specific preset
         
     Returns:
         Dictionary containing preset configuration
         
     Raises:
-        ValueError: If preset type or name is invalid
+        ValueError: If preset type doesn't exist or preset name is invalid
     """
     yaml_data = _load_strategies_yaml()
     
+    # Check if preset type exists
     if preset_type not in yaml_data:
-        available_types = list(yaml_data.keys())
-        raise ValueError(f"Invalid preset type '{preset_type}'. Available: {available_types}")
+        available_types = [k for k in yaml_data.keys() if k.endswith('_presets') or k == 'templates']
+        raise ValueError(
+            f"Preset type '{preset_type}' not found. "
+            f"Available types: {available_types}. "
+            f"This preset category may have been removed from the simplified configuration."
+        )
     
     presets = yaml_data[preset_type]
+    
+    # Handle empty preset categories
+    if not presets:
+        raise ValueError(
+            f"No presets defined for '{preset_type}'. "
+            f"This preset category exists but contains no entries."
+        )
+    
     if preset_name not in presets:
         available_presets = list(presets.keys())
-        raise ValueError(f"Invalid {preset_type} '{preset_name}'. Available: {available_presets}")
+        raise ValueError(
+            f"Preset '{preset_name}' not found in {preset_type}. "
+            f"Available presets: {available_presets}"
+        )
     
     return presets[preset_name]
 
@@ -400,8 +420,17 @@ def get_genre_preset(genre: str) -> Dict[str, Any]:
         Dictionary of configuration settings for the genre
         
     Raises:
-        ValueError: If genre is not found
+        ValueError: If genre presets don't exist or genre is not found
     """
+    yaml_data = _load_strategies_yaml()
+    
+    # Check if genre_presets exists in YAML
+    if 'genre_presets' not in yaml_data or not yaml_data['genre_presets']:
+        raise ValueError(
+            "Genre presets are not defined in the current configuration. "
+            "Consider using 'corrido_demo' or 'general_purpose' from use_case_presets instead."
+        )
+    
     return get_preset_config("genre_presets", genre)
 
 
