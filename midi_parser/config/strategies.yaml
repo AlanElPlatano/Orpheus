@@ -2,13 +2,13 @@
 # This file defines presets for different tokenization strategies and use cases
 
 # ============================================================================
-# Core Tokenization Strategies
+# Tokenization Strategy (REMI only)
 # ============================================================================
 
 tokenization_strategies:
   REMI:
     name: "REMI (REpresentation of MIdi)"
-    description: "Time-based representation optimized for transformer training"
+    description: "Time-based representation optimized for transformer training with bar tokens"
     characteristics:
       vocab_size: medium
       sequence_length: medium
@@ -18,13 +18,13 @@ tokenization_strategies:
       - transformer_training
       - general_purpose
       - neural_music_generation
+      - demo_generation
     config_overrides:
       tokenizer:
         beat_resolution: 8
         num_velocities: 16
         additional_tokens:
-          # Bar tokens
-          Bar: true                
+          Bar: true                # Critical for REMI, don't modify or shit will fall down
           Chord: true
           Rest: true
           Tempo: true
@@ -32,328 +32,83 @@ tokenization_strategies:
           Program: true
           Pedal: false
           PitchBend: false
-          # KeySignature is NOT supported by REMI
-
-  MIDI-Like:
-    name: "MIDI-Like"
-    description: "Direct MIDI representation with complete metadata preservation"
-    characteristics:
-      vocab_size: medium
-      sequence_length: medium
-      transformer_suitability: 4
-      musical_expressiveness: 5
-    recommended_for:
-      - complete_preservation
-      - faithful_conversion
-      - metadata_critical
-      - time_signature_preservation
-      - key_signature_preservation  # MIDI-Like actually supports key signatures (contrary to REMI)
-    config_overrides:
-      tokenizer:
-        beat_resolution: 4
-        num_velocities: 64
-        additional_tokens:
-          Chord: false         # MIDI-Like can't use chord abstraction
-          Rest: false          
-          Tempo: true
-          TimeSignature: true
-          KeySignature: true   
-          Program: true
-          Pedal: true
-          PitchBend: true
-          # Note: Bar tokens not used in MIDI-Like (uses absolute timing) which is why we will be using REMI almost exclusively
-
-  TSD:
-    name: "TSD (Time-Shift Duration)"
-    description: "Simple time-shift and duration encoding with minimal vocabulary"
-    characteristics:
-      vocab_size: small
-      sequence_length: long
-      transformer_suitability: 3
-      musical_expressiveness: 3
-    recommended_for:
-      - simplicity
-      - small_models
-      - resource_constrained
-    config_overrides:
-      tokenizer:
-        beat_resolution: 8
-        num_velocities: 8
-        additional_tokens:
-          Chord: false
-          Rest: true
-          Tempo: true
-          TimeSignature: false
-          Program: true
-          Pedal: false
-          PitchBend: false
-
-  Structured:
-    name: "Structured Encoding"
-    description: "Explicit musical structure with hierarchical representation"
-    characteristics:
-      vocab_size: large
-      sequence_length: short
-      transformer_suitability: 4
-      musical_expressiveness: 5
-    recommended_for:
-      - explicit_structure
-      - music_analysis
-      - compositional_modeling
-    config_overrides:
-      tokenizer:
-        beat_resolution: 4
-        num_velocities: 24
-        additional_tokens:
-          Chord: true
-          Rest: true
-          Tempo: true
-          TimeSignature: true
-          Program: true
-          Pedal: true
-          PitchBend: false
-
-  CPWord:
-    name: "CPWord (Compound Word)"
-    description: "Compound word encoding for shorter sequences"
-    characteristics:
-      vocab_size: medium
-      sequence_length: short
-      transformer_suitability: 5
-      musical_expressiveness: 4
-    recommended_for:
-      - compression
-      - fast_training
-      - efficient_inference
-    config_overrides:
-      tokenizer:
-        beat_resolution: 4
-        num_velocities: 32
-        additional_tokens:
-          Chord: true
-          Rest: false
-          Tempo: true
-          TimeSignature: true
-          Program: true
-          Pedal: false
-          PitchBend: false
-
-  Octuple:
-    name: "Octuple Encoding"
-    description: "8-dimensional feature encoding with maximum expressiveness"
-    characteristics:
-      vocab_size: large
-      sequence_length: short
-      transformer_suitability: 3
-      musical_expressiveness: 5
-    recommended_for:
-      - advanced_analysis
-      - research
-      - maximum_fidelity
-    config_overrides:
-      tokenizer:
-        beat_resolution: 6
-        num_velocities: 64
-        additional_tokens:
-          Chord: true
-          Rest: true
-          Tempo: true
-          TimeSignature: true
-          Program: true
-          Pedal: true
-          PitchBend: true
-
-# ============================================================================
-# Genre-Specific Presets
-# ============================================================================
-
-genre_presets:
-  classical:
-    name: "Classical Music"
-    description: "Optimized for classical piano and orchestral music"
-    config_overrides:
-      tokenization: "Structured"
-      tokenizer:
-        pitch_range: [21, 108]
-        beat_resolution: 6
-        num_velocities: 32
-        max_seq_length: 4096
-        additional_tokens:
-          Chord: true
-          Rest: true
-          Tempo: true
-          TimeSignature: true
-          Program: true
-          Pedal: true
-          PitchBend: false
-      track_classification:
-        chord_threshold: 4
-        melody_max_polyphony: 3
-        min_notes_per_track: 20
-      processing:
-        max_duration_seconds: 1200.0
-        chunk_size_seconds: 60.0
-
-  jazz:
-    name: "Jazz Music"
-    description: "Optimized for jazz harmony and rhythm"
-    config_overrides:
-      tokenization: "REMI"
-      tokenizer:
-        pitch_range: [21, 96]
-        beat_resolution: 8
-        num_velocities: 24
-        max_seq_length: 3072
-        additional_tokens:
-          Chord: true
-          Rest: true
-          Tempo: true
-          TimeSignature: true
-          Program: true
-          Pedal: false
-          PitchBend: true
-      track_classification:
-        chord_threshold: 3
-        bass_pitch_threshold: 45
-        melody_max_polyphony: 2
-      processing:
-        max_duration_seconds: 900.0
-      validation:
-        tolerances:
-          note_start_tick: 2
-          tempo_bpm_diff: 2.0
-
-  pop:
-    name: "Pop Music" 
-    description: "Optimized for popular music with standard song structures"
-    config_overrides:
-      tokenization: "REMI"
-      tokenizer:
-        pitch_range: [36, 84]
-        beat_resolution: 4
-        num_velocities: 16
-        max_seq_length: 2048
-        additional_tokens:
-          Chord: true
-          Rest: false
-          Tempo: true
-          TimeSignature: false
-          Program: true
-          Pedal: false
-          PitchBend: false
-      track_classification:
-        chord_threshold: 3
-        bass_pitch_threshold: 42
-        min_notes_per_track: 8
-        max_empty_ratio: 0.9
-      processing:
-        max_duration_seconds: 360.0
-
-  electronic:
-    name: "Electronic Music"
-    description: "Optimized for electronic and synthesized music"
-    config_overrides:
-      tokenization: "CPWord"
-      tokenizer:
-        pitch_range: [24, 96]
-        beat_resolution: 4
-        num_velocities: 8
-        max_seq_length: 2048
-        additional_tokens:
-          Chord: true
-          Rest: false
-          Tempo: true
-          TimeSignature: false
-          Program: true
-          Pedal: false
-          PitchBend: true
-      track_classification:
-        chord_threshold: 2
-        min_notes_per_track: 5
-      processing:
-        max_duration_seconds: 600.0
-        chunk_size_seconds: 60.0
-
-  folk:
-    name: "Folk Music"
-    description: "Optimized for acoustic folk music with simple arrangements"
-    config_overrides:
-      tokenization: "TSD"
-      tokenizer:
-        pitch_range: [48, 84]
-        beat_resolution: 4
-        num_velocities: 8
-        max_seq_length: 1536
-        additional_tokens:
-          Chord: true
-          Rest: true
-          Tempo: false
-          TimeSignature: false
-          Program: false
-          Pedal: false
-          PitchBend: false
-      track_classification:
-        chord_threshold: 2
-        min_notes_per_track: 5
-        melody_max_polyphony: 1
-      processing:
-        max_duration_seconds: 300.0
-
-  rock:
-    name: "Rock Music"
-    description: "Optimized for rock music with power chords and drums"
-    config_overrides:
-      tokenization: "REMI"
-      tokenizer:
-        pitch_range: [28, 88]
-        beat_resolution: 4
-        num_velocities: 16
-        max_seq_length: 2048
-        additional_tokens:
-          Chord: true
-          Rest: true
-          Tempo: true
-          TimeSignature: true
-          Program: true
-          Pedal: false
-          PitchBend: true
-      track_classification:
-        chord_threshold: 3
-        bass_pitch_threshold: 40
-      processing:
-        max_duration_seconds: 420.0
-
-  ambient:
-    name: "Ambient Music"
-    description: "Optimized for atmospheric and ambient music"
-    config_overrides:
-      tokenization: "Structured"
-      tokenizer:
-        pitch_range: [24, 96]
-        beat_resolution: 2
-        num_velocities: 32
-        max_seq_length: 4096
-        additional_tokens:
-          Chord: true
-          Rest: true
-          Tempo: false
-          TimeSignature: false
-          Program: true
-          Pedal: true
-          PitchBend: true
-      track_classification:
-        chord_threshold: 2
-        min_notes_per_track: 3
-        max_empty_ratio: 0.95
-      processing:
-        max_duration_seconds: 1800.0
-        chunk_size_seconds: 120.0
 
 # ============================================================================
 # Use Case Presets
 # ============================================================================
 
 use_case_presets:
+  # primary use case: 2-track corrido-style demos
+  corrido_demo:
+    name: "Corrido Demo Structure"
+    description: "2-track demos: strict monophonic melody + sustained chords (no rhythm variation)"
+    config_overrides:
+      tokenization: "REMI"
+      tokenizer:
+        pitch_range: [36, 84]       # Typical vocal/guitar range
+        beat_resolution: 4          # Standard resolution
+        num_velocities: 8           # Reduced (dynamics less critical)
+        max_seq_length: 1024        # Shorter for simpler structure
+        additional_tokens:
+          Bar: true
+          Chord: true               # Essential for chord tracking
+          Rest: true                # Important for melody phrasing
+          Tempo: true
+          TimeSignature: true
+          Program: true
+          Pedal: false
+          PitchBend: false
+      track_classification:
+        chord_threshold: 2          # Easy chord identification
+        melody_max_polyphony: 1     # STRICT monophony
+        min_notes_per_track: 5
+        max_empty_ratio: 0.7
+      processing:
+        max_duration_seconds: 300.0  # ~5 minute max song length
+        chunk_size_seconds: 30.0
+      validation:
+        enable_round_trip_test: true
+        quality_threshold: 0.97
+        tolerances:
+          note_start_tick: 0        # STRICT timing for chords
+          note_duration: 1
+          velocity_bin: 1
+          missing_notes_ratio: 0.02
+          extra_notes_ratio: 0.01
+          tempo_bpm_diff: 0.5
+
+  # General-purpose mode (future)
+  general_purpose:
+    name: "General Purpose"
+    description: "Balanced settings for any MIDI file type (future expansion)"
+    config_overrides:
+      tokenization: "REMI"
+      tokenizer:
+        pitch_range: [21, 109]      # Full piano range
+        beat_resolution: 4
+        num_velocities: 16
+        max_seq_length: 2048
+        additional_tokens:
+          Bar: true
+          Chord: true
+          Rest: true
+          Tempo: true
+          TimeSignature: true
+          Program: true
+          Pedal: false
+          PitchBend: false
+      track_classification:
+        chord_threshold: 3
+        melody_max_polyphony: 2
+        min_notes_per_track: 10
+        max_empty_ratio: 0.8
+      processing:
+        max_duration_seconds: 600.0
+      validation:
+        enable_round_trip_test: true
+        quality_threshold: 0.95
+
+  # Useful for ML training
   transformer_training:
     name: "Transformer Model Training"
     description: "Optimized for training transformer-based music models"
@@ -364,6 +119,7 @@ use_case_presets:
         num_velocities: 16
         max_seq_length: 2048
         additional_tokens:
+          Bar: true
           Chord: true
           Rest: true
           Tempo: true
@@ -379,93 +135,19 @@ use_case_presets:
         include_vocabulary: true
         pretty_print: false
 
-  analysis_research:
-    name: "Music Analysis & Research"
-    description: "Maximum fidelity for detailed music analysis"
+  # Useful for testing/validation
+  high_fidelity:
+    name: "High Fidelity Preservation"
+    description: "Maximum preservation of original MIDI data for validation"
     config_overrides:
-      tokenization: "Octuple"
+      tokenization: "REMI"
       tokenizer:
-        beat_resolution: 6
+        pitch_range: [21, 109]
+        beat_resolution: 8
         num_velocities: 64
         max_seq_length: 4096
         additional_tokens:
-          Chord: true
-          Rest: true
-          Tempo: true
-          TimeSignature: true
-          Program: true
-          Pedal: true
-          PitchBend: true
-      validation:
-        enable_round_trip_test: true
-        quality_threshold: 0.98
-        tolerances:
-          note_start_tick: 0
-          note_duration: 1
-          velocity_bin: 0
-          missing_notes_ratio: 0.005
-          extra_notes_ratio: 0.005
-
-  fast_inference:
-    name: "Fast Inference & Generation"
-    description: "Optimized for real-time generation and fast inference"
-    config_overrides:
-      tokenization: "CPWord"
-      tokenizer:
-        beat_resolution: 4
-        num_velocities: 16
-        max_seq_length: 1024
-        additional_tokens:
-          Chord: true
-          Rest: false
-          Tempo: true
-          TimeSignature: false
-          Program: true
-          Pedal: false
-          PitchBend: false
-      processing:
-        parallel_processing: true
-        max_duration_seconds: 300.0
-      output:
-        compress_json: false
-        pretty_print: false
-
-  mobile_deployment:
-    name: "Mobile & Edge Deployment"
-    description: "Minimal vocabulary and size for mobile deployment"
-    config_overrides:
-      tokenization: "TSD"
-      tokenizer:
-        pitch_range: [36, 84]
-        beat_resolution: 4
-        num_velocities: 8
-        max_seq_length: 512
-        additional_tokens:
-          Chord: false
-          Rest: true
-          Tempo: false
-          TimeSignature: false
-          Program: false
-          Pedal: false
-          PitchBend: false
-      processing:
-        max_duration_seconds: 180.0
-        max_file_size_mb: 5.0
-      output:
-        compress_json: true
-        include_vocabulary: false
-
-  high_fidelity:
-    name: "High Fidelity Preservation"
-    description: "Maximum preservation of original MIDI data"
-    config_overrides:
-      tokenization: "Structured"
-      tokenizer:
-        pitch_range: [0, 127]
-        beat_resolution: 8
-        num_velocities: 128
-        max_seq_length: 8192
-        additional_tokens:
+          Bar: true
           Chord: true
           Rest: true
           Tempo: true
@@ -482,271 +164,6 @@ use_case_presets:
           velocity_bin: 0
           missing_notes_ratio: 0.001
           extra_notes_ratio: 0.001
-      processing:
-        max_duration_seconds: 3600.0
-
-  corrido:
-    name: "Corrido Structure Training"
-    description: "Optimized for 2-track MIDIs with strict chord-melody structure: chord track (measure-aligned, no rhythm variation) + 100% monophonic melody"
-    config_overrides:
-      tokenization: "MIDI-Like"
-      tokenizer:
-        pitch_range: [36, 84]   # Typical vocal/guitar range
-        beat_resolution: 4      # Standard resolution
-        num_velocities: 8       # Reduced since dynamics less critical
-        max_seq_length: 1024    # Shorter sequences for simpler structure
-        additional_tokens:
-          Chord: true           # Essential for chord tracking
-          Rest: true            # Important for melody phrasing
-          Tempo: true           # Steady tempo typical for Corrido
-          TimeSignature: true   # Usually 4/4 or 3/4
-          Program: true         # Multiple instruments possible
-          Pedal: false          # Not typically used
-          PitchBend: false      # Rare in this style
-      track_classification:
-        chord_threshold: 2      # Identify chords easily
-        melody_max_polyphony: 1 # STRICT monophony requirement
-        min_notes_per_track: 5  # Reasonable minimum
-        max_empty_ratio: 0.7    # Tighter than default (less empty space)
-      processing:
-        max_duration_seconds: 300.0  # Typical song length
-        chunk_size_seconds: 30.0     # Logical musical sections
-      validation:
-        enable_round_trip_test: true
-        quality_threshold: 0.97      # High quality requirement
-        tolerances:
-          note_start_tick: 0         # STRICT: No timing variation for chords
-          note_duration: 1           # Minimal duration tolerance
-          velocity_bin: 1
-          missing_notes_ratio: 0.02
-          extra_notes_ratio: 0.01
-          tempo_bpm_diff: 0.5        # Tight tempo consistency
-
-# ============================================================================
-# Instrument-Specific Presets
-# ============================================================================
-
-instrument_presets:
-  piano_solo:
-    name: "Solo Piano"
-    description: "Optimized for solo piano performances"
-    config_overrides:
-      tokenization: "REMI"
-      tokenizer:
-        pitch_range: [21, 108]
-        beat_resolution: 6
-        num_velocities: 32
-        additional_tokens:
-          Chord: true
-          Rest: true
-          Tempo: true
-          TimeSignature: true
-          Program: false
-          Pedal: true
-          PitchBend: false
-      track_classification:
-        chord_threshold: 3
-        melody_max_polyphony: 6
-        min_notes_per_track: 15
-
-  guitar_ensemble:
-    name: "Guitar Ensemble"
-    description: "Optimized for guitar-based music"
-    config_overrides:
-      tokenization: "REMI"
-      tokenizer:
-        pitch_range: [40, 88]
-        beat_resolution: 4
-        num_velocities: 16
-        additional_tokens:
-          Chord: true
-          Rest: true
-          Tempo: true
-          TimeSignature: true
-          Program: true
-          Pedal: false
-          PitchBend: true
-      track_classification:
-        chord_threshold: 3
-        bass_pitch_threshold: 45
-
-  orchestral:
-    name: "Orchestral Music"
-    description: "Optimized for full orchestral scores"
-    config_overrides:
-      tokenization: "Structured"
-      tokenizer:
-        pitch_range: [21, 108]
-        beat_resolution: 6
-        num_velocities: 64
-        max_seq_length: 6144
-        additional_tokens:
-          Chord: true
-          Rest: true
-          Tempo: true
-          TimeSignature: true
-          Program: true
-          Pedal: false
-          PitchBend: true
-      processing:
-        max_duration_seconds: 2400.0
-        chunk_size_seconds: 90.0
-
-  vocal_music:
-    name: "Vocal Music"
-    description: "Optimized for vocal melodies and accompaniment"
-    config_overrides:
-      tokenization: "REMI"
-      tokenizer:
-        pitch_range: [48, 84]
-        beat_resolution: 4
-        num_velocities: 16
-        additional_tokens:
-          Chord: true
-          Rest: true
-          Tempo: true
-          TimeSignature: true
-          Program: true
-          Pedal: false
-          PitchBend: false
-      track_classification:
-        melody_max_polyphony: 1
-        chord_threshold: 3
-
-# ============================================================================
-# Difficulty/Complexity Presets
-# ============================================================================
-
-complexity_presets:
-  beginner:
-    name: "Beginner Level"
-    description: "Simple music for educational purposes"
-    config_overrides:
-      tokenization: "TSD"
-      tokenizer:
-        pitch_range: [48, 72]
-        beat_resolution: 2
-        num_velocities: 4
-        max_seq_length: 512
-        additional_tokens:
-          Chord: true
-          Rest: true
-          Tempo: false
-          TimeSignature: false
-          Program: false
-          Pedal: false
-          PitchBend: false
-      track_classification:
-        chord_threshold: 2
-        melody_max_polyphony: 1
-        min_notes_per_track: 5
-
-  intermediate:
-    name: "Intermediate Level"
-    description: "Moderate complexity for developing skills"
-    config_overrides:
-      tokenization: "REMI"
-      tokenizer:
-        pitch_range: [36, 84]
-        beat_resolution: 4
-        num_velocities: 16
-        max_seq_length: 1536
-        additional_tokens:
-          Chord: true
-          Rest: true
-          Tempo: true
-          TimeSignature: true
-          Program: true
-          Pedal: false
-          PitchBend: false
-      track_classification:
-        chord_threshold: 3
-        melody_max_polyphony: 2
-
-  advanced:
-    name: "Advanced Level"
-    description: "Complex music for advanced analysis"
-    config_overrides:
-      tokenization: "Structured"
-      tokenizer:
-        pitch_range: [21, 108]
-        beat_resolution: 6
-        num_velocities: 32
-        max_seq_length: 4096
-        additional_tokens:
-          Chord: true
-          Rest: true
-          Tempo: true
-          TimeSignature: true
-          Program: true
-          Pedal: true
-          PitchBend: true
-      track_classification:
-        chord_threshold: 4
-        melody_max_polyphony: 4
-        min_notes_per_track: 20
-
-# ============================================================================
-# Custom Configuration Templates
-# ============================================================================
-
-templates:
-  minimal:
-    name: "Minimal Configuration"
-    description: "Bare minimum settings for basic tokenization"
-    config_overrides:
-      tokenization: "TSD"
-      tokenizer:
-        pitch_range: [36, 84]
-        beat_resolution: 4
-        num_velocities: 8
-        max_seq_length: 1024
-        additional_tokens:
-          Chord: false
-          Rest: true
-          Tempo: false
-          TimeSignature: false
-          Program: false
-          Pedal: false
-          PitchBend: false
-
-  maximal:
-    name: "Maximal Configuration"
-    description: "All features enabled for complete representation"
-    config_overrides:
-      tokenization: "Octuple"
-      tokenizer:
-        pitch_range: [0, 127]
-        beat_resolution: 8
-        num_velocities: 128
-        max_seq_length: 8192
-        additional_tokens:
-          Chord: true
-          Rest: true
-          Tempo: true
-          TimeSignature: true
-          Program: true
-          Pedal: true
-          PitchBend: true
-
-  balanced:
-    name: "Balanced Configuration"
-    description: "Good balance between features and efficiency"
-    config_overrides:
-      tokenization: "REMI"
-      tokenizer:
-        pitch_range: [21, 109]
-        beat_resolution: 4
-        num_velocities: 16
-        max_seq_length: 2048
-        additional_tokens:
-          Chord: true
-          Rest: true
-          Tempo: true
-          TimeSignature: true
-          Program: true
-          Pedal: false
-          PitchBend: false
 
 # ============================================================================
 # Validation Rules
