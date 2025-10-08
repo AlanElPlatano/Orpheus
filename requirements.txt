@@ -8,3 +8,4 @@ PyYAML>=6.0.3
 scipy>=1.15.3
 scikit-learn>=1.7.2
 symusic>=0.5.8
+gradio>=5.49.1
