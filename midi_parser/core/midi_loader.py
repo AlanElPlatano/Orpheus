@@ -187,8 +187,8 @@ def extract_metadata(midi: MidiFile, file_path: Optional[Path] = None) -> MidiMe
             programs.add(inst.program)
     metadata.instrument_programs = sorted(list(programs))
     
-    # Check for lyrics
-    metadata.has_lyrics = bool(midi.lyrics)
+    # Always set has_lyrics to False because token sequences contain no lyric tokens, only musical events
+    metadata.has_lyrics = False
     
     # Check for markers
     metadata.has_markers = bool(midi.markers)

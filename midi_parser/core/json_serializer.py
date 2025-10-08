@@ -453,8 +453,9 @@ class JSONSerializer:
             json_metadata["key_signature"] = key
             json_metadata["key_confidence"] = round(key_confidence, 3)
         
-        if metadata.has_lyrics:
-            json_metadata["has_lyrics"] = True
+        # Always include has_lyrics flag, regardless of if it's true or not
+        json_metadata["has_lyrics"] = metadata.has_lyrics
+
         if metadata.has_markers:
             json_metadata["has_markers"] = True
         if metadata.instrument_programs:
