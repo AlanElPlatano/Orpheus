@@ -465,27 +465,20 @@ class JSONSerializer:
         tracks = []
         global_tokens = []
         total_sequence_length = 0
-        
+
+        # Extract global tokens from first result (all are the same)
+        if tokenization_results and tokenization_results[0].success:
+            global_tokens = tokenization_results[0].tokens
+            total_sequence_length = len(global_tokens)
+            logger.info(f"Using global token sequence: {total_sequence_length} tokens")
+
         for i, track_info in enumerate(track_infos):
-            # Get corresponding tokenization result
-            if i < len(tokenization_results):
-                token_result = tokenization_results[i]
-                tokens = token_result.tokens
-                vocab_size = token_result.vocabulary_size
-            else:
-                # Handle missing tokenization gracefully
-                tokens = []
-                vocab_size = 0
-                logger.warning(f"No tokenization result for track {i}")
-            
             track_data = {
                 "index": track_info.index,
                 "name": track_info.name or f"Track_{track_info.index}",
                 "program": track_info.program,
                 "is_drum": track_info.is_drum,
                 "type": track_info.type,
-                "tokens": tokens,
-                "token_count": len(tokens),
                 "note_count": track_info.statistics.total_notes
             }
             
@@ -500,14 +493,8 @@ class JSONSerializer:
             # Add track statistics if verbose mode
             if self.output_config.include_vocabulary:
                 track_data["statistics"] = track_info.statistics.to_dict()
-            
+
             tracks.append(track_data)
-            total_sequence_length += len(tokens)
-        
-        # Extract global events (tempo, time signature changes)
-        # These are typically handled at the file level, not track level
-        if len(tokenization_results) > 0 and hasattr(tokenization_results[0], 'global_tokens'):
-            global_tokens = tokenization_results[0].global_tokens
         
         # Build main JSON structure
         json_data = {
@@ -517,12 +504,9 @@ class JSONSerializer:
             "tokenizer_config": tokenizer_config,
             "metadata": json_metadata,
             "tracks": tracks,
+            "global_tokens": global_tokens,  # Store one sequence for entire midi
             "sequence_length": total_sequence_length
         }
-        
-        # Add global events if present
-        if global_tokens:
-            json_data["global_events"] = global_tokens
         
         # Add vocabulary if configured
         if self.output_config.include_vocabulary and tokenization_results:

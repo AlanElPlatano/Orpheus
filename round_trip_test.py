@@ -100,22 +100,23 @@ class RoundTripTester:
                 logger.info(f"  - Track {track.index}: {track.type} "
                            f"({track.statistics.total_notes} notes, "
                            f"confidence: {track.confidence:.2f})")
-            
-            tokenization_results = []
-            for track_info in track_infos:
-                result = self.tokenizer_manager.tokenize_midi(
-                    midi,
-                    strategy=self.config.tokenization,
-                    track_infos=[track_info]
-                )
-                tokenization_results.append(result)
-                
-                if result.success:
-                    logger.info(f"  ✓ Tokenized track {track_info.index}: "
-                               f"{result.sequence_length} tokens")
-                else:
-                    logger.warning(f"  ✗ Failed to tokenize track {track_info.index}: "
-                                  f"{result.error_message}")
+
+            # Tokenize entire MIDI file once (not per-track)
+            global_result = self.tokenizer_manager.tokenize_midi(
+                midi,
+                strategy=self.config.tokenization,
+                track_infos=track_infos,  # Pass all tracks
+                auto_select=False
+            )
+
+            if not global_result.success:
+                logger.error(f"Tokenization failed: {global_result.error_message}")
+                return False, None, None
+
+            logger.info(f"✓ Tokenized entire MIDI: {global_result.sequence_length} tokens")
+
+            # Create per-track results for metadata (but tokens stay global)
+            tokenization_results = [global_result for _ in track_infos]
             
             processing_metadata = ProcessingMetadata(
                 processing_time_seconds=time.time() - start_time,
@@ -169,94 +170,55 @@ class RoundTripTester:
             
             strategy = json_data.get("tokenization", "REMI")
             tokenizer = self.tokenizer_manager.create_tokenizer(strategy)
-            
-            tracks_data = json_data.get("tracks", [])
-            if not tracks_data:
-                logger.error("No tracks found in JSON")
+
+            # Get the global token sequence (not per-track tokens)
+            global_tokens = json_data.get("global_tokens", [])
+
+            if not global_tokens:
+                logger.error("No global_tokens found in JSON")
                 return False, None
-            
-            logger.info(f"Reconstructing {len(tracks_data)} tracks from tokens")
-            
-            ppq = json_data.get("metadata", {}).get("ppq", 480)
-            reconstructed_midi = MidiFile(ticks_per_beat=ppq)
-            
-            tempo_changes = json_data.get("metadata", {}).get("tempo_changes", [])
-            if tempo_changes:
-                from miditoolkit import TempoChange
-                for tempo in tempo_changes:
-                    reconstructed_midi.tempo_changes.append(
-                        TempoChange(tempo=tempo["bpm"], time=tempo["tick"])
-                    )
-            else:
-                from miditoolkit import TempoChange
-                reconstructed_midi.tempo_changes.append(TempoChange(tempo=120.0, time=0))
-            
-            time_signatures = json_data.get("metadata", {}).get("time_signatures", [])
-            if time_signatures:
-                from miditoolkit import TimeSignature
-                for ts in time_signatures:
-                    reconstructed_midi.time_signature_changes.append(
-                        TimeSignature(
-                            numerator=ts["numerator"],
-                            denominator=ts["denominator"],
-                            time=ts["tick"]
-                        )
-                    )
-            else:
-                from miditoolkit import TimeSignature
-                reconstructed_midi.time_signature_changes.append(
-                    TimeSignature(numerator=4, denominator=4, time=0)
-                )
-            
-            total_notes_reconstructed = 0
-            
-            for track_data in tracks_data:
-                tokens = track_data.get("tokens", [])
-                
-                if not tokens:
-                    logger.warning(f"Skipping empty track: {track_data.get('name', 'Unknown')}")
-                    continue
-                
+
+            logger.info(f"Reconstructing from {len(global_tokens)} global tokens")
+
+            try:
+                from miditok.classes import TokSequence
+                import tempfile
+                import os
+
+                # Decode the entire sequence once
+                tok_sequence = TokSequence(ids=global_tokens)
+                score = tokenizer.decode([tok_sequence])
+
+                # Convert symusic Score to miditoolkit MidiFile
+                with tempfile.NamedTemporaryFile(mode='wb', suffix='.mid', delete=False) as tmp_file:
+                    tmp_path = tmp_file.name
+
                 try:
-                    from miditok.classes import TokSequence
-                    import tempfile
-                    import os
-                    
-                    tok_sequence = TokSequence(ids=tokens)
-                    
-                    # Use decode() instead of deprecated tokens_to_midi()
-                    score = tokenizer.decode([tok_sequence])
-                    
-                    # Convert symusic Score to miditoolkit MidiFile
-                    # The easiest way is to save to temp file and reload
-                    with tempfile.NamedTemporaryFile(mode='wb', suffix='.mid', delete=False) as tmp_file:
-                        tmp_path = tmp_file.name
-                    
+                    score.dump_midi(tmp_path)
+                    reconstructed_midi = MidiFile(tmp_path)
+                finally:
                     try:
-                        score.dump_midi(tmp_path)
-                        track_midi = MidiFile(tmp_path)
-                    finally:
-                        try:
-                            os.unlink(tmp_path)
-                        except:
-                            pass
-                    
-                    if track_midi.instruments:
-                        instrument = track_midi.instruments[0]
-                        instrument.name = track_data.get("name", f"Track_{track_data['index']}")
-                        instrument.program = track_data.get("program", 0)
-                        instrument.is_drum = track_data.get("is_drum", False)
-                        
-                        reconstructed_midi.instruments.append(instrument)
-                        total_notes_reconstructed += len(instrument.notes)
-                        
-                        logger.info(f"  ✓ Track: {instrument.name} ({len(instrument.notes)} notes)")
-                    else:
-                        logger.warning(f"  ✗ No notes in track: {track_data.get('name', 'Unknown')}")
-                        
-                except Exception as e:
-                    logger.error(f"  ✗ Failed to reconstruct track {track_data.get('name', 'Unknown')}: {e}")
-                    continue
+                        os.unlink(tmp_path)
+                    except:
+                        pass
+
+            except Exception as e:
+                logger.error(f"Failed to decode tokens: {e}")
+                return False, None
+
+            # Update track metadata from JSON
+            tracks_data = json_data.get("tracks", [])
+            total_notes_reconstructed = 0
+
+            for i, instrument in enumerate(reconstructed_midi.instruments):
+                if i < len(tracks_data):
+                    track_data = tracks_data[i]
+                    instrument.name = track_data.get("name", f"Track_{i}")
+                    instrument.program = track_data.get("program", 0)
+                    instrument.is_drum = track_data.get("is_drum", False)
+
+                total_notes_reconstructed += len(instrument.notes)
+                logger.info(f"  ✓ Track {i}: {instrument.name} ({len(instrument.notes)} notes)")
             
             if not reconstructed_midi.instruments:
                 logger.error("No instruments in reconstructed MIDI")
