@@ -181,13 +181,16 @@ class RoundTripTester:
             logger.info(f"Reconstructing from {len(global_tokens)} global tokens")
 
             try:
-                from miditok.classes import TokSequence
                 import tempfile
                 import os
 
-                # Decode the entire sequence once
-                tok_sequence = TokSequence(ids=global_tokens)
-                score = tokenizer.decode([tok_sequence])
+                # Decode the global token sequence
+                # When one_token_stream_for_programs=True, pass tokens directly as list of ints
+                logger.info(f"Decoding {len(global_tokens)} global tokens")
+
+                score = tokenizer.decode(global_tokens)
+                logger.info(f"Decoded score type: {type(score)}")
+                logger.info(f"Score has {len(score.tracks)} tracks")
 
                 # Convert symusic Score to miditoolkit MidiFile
                 with tempfile.NamedTemporaryFile(mode='wb', suffix='.mid', delete=False) as tmp_file:
@@ -204,11 +207,17 @@ class RoundTripTester:
 
             except Exception as e:
                 logger.error(f"Failed to decode tokens: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
                 return False, None
 
             # Update track metadata from JSON
             tracks_data = json_data.get("tracks", [])
             total_notes_reconstructed = 0
+
+            # Ensure we have the correct number of tracks
+            logger.info(f"Reconstructed MIDI has {len(reconstructed_midi.instruments)} tracks, "
+                       f"original had {len(tracks_data)} tracks")
 
             for i, instrument in enumerate(reconstructed_midi.instruments):
                 if i < len(tracks_data):

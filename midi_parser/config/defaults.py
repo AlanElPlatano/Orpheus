@@ -32,7 +32,7 @@ class TokenizerConfig:
         'Pedal': False,
         'PitchBend': False,
     })
-    single_stream_mode: bool = False
+    single_stream_mode: bool = True
     
     def __post_init__(self):
         """Validate tokenizer configuration after initialization."""
