@@ -1,11 +1,9 @@
 """
-Gradio GUI for MIDI Parser - Orpheus Project
-
-A comprehensive interface for processing MIDI files into tokenized JSON
-for AI music generation training.
+Gradio GUI for Orpheus Project
 
 Usage:
-    python gui/gradio_app.py
+    (from project root)
+    python -m gui.gradio_app
 """
 
 import gradio as gr
@@ -285,29 +283,37 @@ def process_single_file(
 
 
 def process_batch_files(
-    files: List[str],
+    input_dir: str,
     output_dir: str,
     mode: str,
     progress=gr.Progress()
 ) -> Tuple[str, str, str]:
     """
-    Process multiple MIDI files.
-    
+    Process multiple MIDI files from a directory.
+
     Returns:
         Tuple of (status, summary, logs)
     """
-    if not files:
-        return "❌ No files selected", "", ""
-    
+    if not input_dir:
+        return "❌ No input directory selected", "", ""
+
+    # Get all MIDI files from input directory
+    input_path = Path(input_dir)
+    if not input_path.exists() or not input_path.is_dir():
+        return "❌ Invalid input directory", "", ""
+
+    file_paths = list(input_path.glob("*.mid")) + list(input_path.glob("*.midi"))
+    if not file_paths:
+        return "❌ No MIDI files found in directory", "", ""
+
     # Initialize parser
     if app_state.parser is None or app_state.current_mode != mode:
         app_state.initialize_parser(mode)
-    
+
     app_state.logs.clear()
     app_state.results.clear()
-    
+
     output_path = Path(output_dir)
-    file_paths = [Path(f) for f in files]
     
     # Progress tracking
     def file_progress_callback(current: int, total: int, filename: str):
@@ -378,264 +384,98 @@ def cancel_processing():
 
 def create_interface():
     """Create the Gradio interface."""
-    
+
     with gr.Blocks(
-        title="MIDI Parser - Orpheus",
+        title="Orpheus",
         theme=gr.themes.Soft(primary_hue="blue", secondary_hue="purple")
     ) as app:
-        
-        gr.Markdown(
-            """
-            # 🎵 MIDI Parser - Orpheus Project
-            
-            Transform MIDI files into tokenized JSON for AI music generation training.
-            """
-        )
-        
+
+        gr.Markdown("# Orpheus")
+
         with gr.Tabs() as tabs:
-            
+
             # ================================================================
-            # TAB 1: Single File Processing
+            # TAB 1: Preprocess
             # ================================================================
-            with gr.Tab("📄 Single File"):
-                
+            with gr.Tab("Preprocess"):
+                gr.Markdown("*Preprocessing functionality coming soon...*")
+
+            # ================================================================
+            # TAB 2: Parser
+            # ================================================================
+            with gr.Tab("Parser"):
+
                 with gr.Row():
+                    # Left column - inputs
                     with gr.Column(scale=1):
-                        gr.Markdown("### Input Configuration")
-                        
-                        mode_single = gr.Radio(
+                        mode_parser = gr.Radio(
                             choices=[
-                                ("🎯 Simple Mode (Melody + Chord)", "simple"),
-                                ("🔧 Advanced Mode (General MIDI)", "advanced")
+                                ("Simple Mode", "simple"),
+                                ("Advanced Mode", "advanced")
                             ],
                             value="simple",
-                            label="Processing Mode",
-                            info="Simple mode enforces 2-track structure for music generation"
+                            label="Mode",
+                            scale=1
                         )
-                        
-                        file_input = gr.File(
-                            label="Upload MIDI File",
-                            file_types=[".mid", ".midi"],
-                            type="filepath"
+
+                        input_dir_parser = gr.Textbox(
+                            label="Input Directory",
+                            value="./source_midis",
+                            scale=1
                         )
-                        
-                        output_dir_single = gr.Textbox(
+
+                        output_dir_parser = gr.Textbox(
                             label="Output Directory",
                             value="./processed",
-                            info="Where to save the JSON output"
+                            scale=1
                         )
-                        
-                        with gr.Row():
-                            process_btn = gr.Button(
-                                "🚀 Process File",
-                                variant="primary",
-                                size="lg"
-                            )
-                            cancel_btn = gr.Button(
-                                "⏹️ Cancel",
-                                variant="stop"
-                            )
-                    
+
+                        process_parser_btn = gr.Button(
+                            "Process",
+                            variant="primary",
+                            size="lg"
+                        )
+
+                        cancel_parser_btn = gr.Button(
+                            "Cancel",
+                            variant="stop"
+                        )
+
+                    # Right column - results
                     with gr.Column(scale=2):
-                        gr.Markdown("### Processing Results")
-                        
-                        status_single = gr.Textbox(
+                        status_parser = gr.Textbox(
                             label="Status",
-                            interactive=False
+                            interactive=False,
+                            scale=1
                         )
-                        
-                        output_path_single = gr.Textbox(
-                            label="Output File Path",
-                            interactive=False
-                        )
-                        
-                        stats_single = gr.Markdown("*No file processed yet*")
-                
-                with gr.Accordion("📋 Processing Logs", open=False):
-                    logs_single = gr.Textbox(
-                        label="Logs",
+
+                        summary_parser = gr.Markdown("*No files processed yet*")
+
+                with gr.Accordion("Processing Logs", open=False):
+                    logs_parser = gr.Textbox(
                         lines=10,
                         interactive=False,
                         show_label=False
                     )
-                
+
                 # Event handlers
-                process_btn.click(
-                    fn=process_single_file,
-                    inputs=[file_input, output_dir_single, mode_single],
-                    outputs=[status_single, output_path_single, stats_single, logs_single]
-                )
-                
-                cancel_btn.click(
-                    fn=cancel_processing,
-                    outputs=status_single
-                )
-            
-            # ================================================================
-            # TAB 2: Batch Processing
-            # ================================================================
-            with gr.Tab("📁 Batch Processing"):
-                
-                with gr.Row():
-                    with gr.Column(scale=1):
-                        gr.Markdown("### Batch Configuration")
-                        
-                        mode_batch = gr.Radio(
-                            choices=[
-                                ("🎯 Simple Mode", "simple"),
-                                ("🔧 Advanced Mode", "advanced")
-                            ],
-                            value="simple",
-                            label="Processing Mode"
-                        )
-                        
-                        files_input = gr.File(
-                            label="Upload MIDI Files",
-                            file_count="multiple",
-                            file_types=[".mid", ".midi"],
-                            type="filepath"
-                        )
-                        
-                        output_dir_batch = gr.Textbox(
-                            label="Output Directory",
-                            value="./processed",
-                        )
-                        
-                        with gr.Row():
-                            process_batch_btn = gr.Button(
-                                "🚀 Process Batch",
-                                variant="primary",
-                                size="lg"
-                            )
-                            cancel_batch_btn = gr.Button(
-                                "⏹️ Cancel",
-                                variant="stop"
-                            )
-                    
-                    with gr.Column(scale=2):
-                        gr.Markdown("### Batch Results")
-                        
-                        status_batch = gr.Textbox(
-                            label="Status",
-                            interactive=False
-                        )
-                        
-                        summary_batch = gr.Markdown("*No batch processed yet*")
-                
-                with gr.Accordion("📋 Batch Logs", open=False):
-                    logs_batch = gr.Textbox(
-                        label="Logs",
-                        lines=15,
-                        interactive=False,
-                        show_label=False
-                    )
-                
-                # Event handlers
-                process_batch_btn.click(
+                process_parser_btn.click(
                     fn=process_batch_files,
-                    inputs=[files_input, output_dir_batch, mode_batch],
-                    outputs=[status_batch, summary_batch, logs_batch]
+                    inputs=[input_dir_parser, output_dir_parser, mode_parser],
+                    outputs=[status_parser, summary_parser, logs_parser]
                 )
-                
-                cancel_batch_btn.click(
+
+                cancel_parser_btn.click(
                     fn=cancel_processing,
-                    outputs=status_batch
+                    outputs=status_parser
                 )
-            
+
             # ================================================================
-            # TAB 3: Configuration & Help
+            # TAB 3: Training
             # ================================================================
-            with gr.Tab("⚙️ Configuration & Help"):
-                
-                gr.Markdown(
-                    """
-                    ## 🎯 Simple Mode vs Advanced Mode
-                    
-                    ### Simple Mode (Recommended for Music Generation)
-                    - **Purpose:** Process MIDI files with exactly 2 tracks
-                    - **Structure:** Monophonic melody + Chord track
-                    - **Use Case:** Training AI for demo generation
-                    - **Validation:** Strict checks for proper structure
-                    - **Output:** Optimized token sequences for learning
-                    
-                    ### Advanced Mode (General Purpose)
-                    - **Purpose:** Process any MIDI file
-                    - **Structure:** Multiple tracks, any type
-                    - **Use Case:** General MIDI analysis and tokenization
-                    - **Validation:** Flexible, preserves all content
-                    - **Output:** Comprehensive tokenization with metadata
-                    
-                    ---
-                    
-                    ## 📊 Output Format
-                    
-                    Processed files are saved as JSON (optionally compressed) with:
-                    - Token sequences for each track
-                    - Metadata (tempo, time signature, key)
-                    - Track information (type, statistics)
-                    - Vocabulary information
-                    
-                    **File naming:** `{KEY}-{TEMPO}bpm-{TOKENIZATION}-{title}.json`
-                    
-                    Example: `Cmajor-120bpm-remi-my_song.json`
-                    
-                    ---
-                    
-                    ## 🎼 Preparing MIDI Files for Simple Mode
-                    
-                    1. **Melody Track:**
-                       - Must be strictly monophonic (one note at a time)
-                       - Should contain the main melodic line
-                       - Typical instruments: Piano, Synth Lead, Voice
-                    
-                    2. **Chord Track:**
-                       - Should have sustained chords (no rhythmic variation)
-                       - Each chord sustains until the next chord starts
-                       - Typical instruments: Piano, Pad, Strings
-                    
-                    3. **Track Naming:**
-                       - Name tracks clearly: "Melody", "Chords", etc.
-                       - Supports multiple languages
-                       - Auto-detection based on musical characteristics
-                    
-                    ---
-                    
-                    ## 💡 Tips for Best Results
-                    
-                    - **Clean your MIDI files** before processing (use preprocessor)
-                    - **Remove empty tracks** to avoid noise
-                    - **Use consistent tempo** for better tokenization
-                    - **Keep files under 50MB** for optimal performance
-                    - **Batch process** similar files together
-                    
-                    ---
-                    
-                    ## 🚨 Troubleshooting
-                    
-                    **"Expected 2 tracks, found X"**
-                    → Use preprocessor to reduce tracks or switch to Advanced Mode
-                    
-                    **"Melody track is not monophonic"**
-                    → Remove overlapping notes or adjust polyphony threshold
-                    
-                    **"Processing takes too long"**
-                    → Try reducing file size or using simpler tokenization
-                    
-                    **"Memory warning"**
-                    → Close other applications or process smaller files
-                    """
-                )
-        
-        gr.Markdown(
-            """
-            ---
-            
-            **Orpheus MIDI Parser** | Built with ❤️ for AI Music Generation
-            
-            *See logs tab for detailed processing information*
-            """
-        )
-    
+            with gr.Tab("Training"):
+                gr.Markdown("*Training functionality coming soon...*")
+
     return app
 
 
@@ -652,7 +492,7 @@ if __name__ == "__main__":
     app = create_interface()
     
     app.launch(
-        server_name="0.0.0.0",  # Allow external access
+        server_name="localhost",  # Allow external access
         server_port=7860,
         share=False,  # Set to True to create public link
         show_error=True,
