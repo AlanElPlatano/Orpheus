@@ -14,6 +14,7 @@ from pathlib import Path
 from gui.tabs import (
     create_preprocess_tab,
     create_parser_tab,
+    create_json_to_midi_tab,
     create_training_tab,
     create_generator_tab
 )
@@ -44,6 +45,7 @@ def create_interface() -> gr.Blocks:
             create_parser_tab()
             create_training_tab()
             create_generator_tab()
+            create_json_to_midi_tab()
         
         # Footer
         gr.Markdown("""
@@ -56,10 +58,11 @@ def create_interface() -> gr.Blocks:
 
 def main():
     """Main entry point for the Gradio application."""
-    
-    # Ensure output directory exists
+
+    # Ensure output directories exist
     Path("./processed").mkdir(exist_ok=True)
-    
+    Path("./generated").mkdir(exist_ok=True)
+
     # Create and launch the interface
     app = create_interface()
     

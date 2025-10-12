@@ -185,11 +185,11 @@ def cancel_processing() -> str:
 def create_parser_tab() -> gr.Tab:
     """
     Create the parser tab with UI and event handlers.
-    
+
     Returns:
         Gradio Tab component
     """
-    with gr.Tab("Parser") as tab:
+    with gr.Tab("MIDI Parser") as tab:
         
         with gr.Row():
             # Left column - Configuration and controls
