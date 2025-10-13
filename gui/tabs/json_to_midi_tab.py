@@ -96,9 +96,42 @@ class JSONToMIDIConverter:
             # Load JSON data
             json_data = load_tokenized_json(json_path)
 
-            # Get tokenization strategy and create tokenizer
+            # Get tokenization strategy
             strategy = json_data.get("tokenization", "REMI")
-            tokenizer = self.tokenizer_manager.create_tokenizer(strategy)
+
+            # Use the tokenizer config that was stored in the JSON during encoding
+            # This makes sure the tokenizer vocabulary matches the tokens being decoded
+            # Basically, makes round-trip possible by speaking the same language
+            stored_config = json_data.get("tokenizer_config", {})
+
+            if stored_config:
+                # Create a new config based on the stored configuration
+                from midi_parser.config.defaults import TokenizerConfig
+                tokenizer_config = TokenizerConfig()
+
+                # Apply stored configuration values
+                if "pitch_range" in stored_config:
+                    tokenizer_config.pitch_range = tuple(stored_config["pitch_range"])
+                if "beat_resolution" in stored_config:
+                    tokenizer_config.beat_resolution = stored_config["beat_resolution"]
+                if "num_velocities" in stored_config:
+                    tokenizer_config.num_velocities = stored_config["num_velocities"]
+                if "additional_tokens" in stored_config:
+                    tokenizer_config.additional_tokens = stored_config["additional_tokens"]
+                if "max_seq_length" in stored_config:
+                    tokenizer_config.max_seq_length = stored_config["max_seq_length"]
+
+                logger.info(f"Using stored tokenizer config from JSON:")
+                logger.info(f"  - pitch_range: {tokenizer_config.pitch_range}")
+                logger.info(f"  - beat_resolution: {tokenizer_config.beat_resolution}")
+                logger.info(f"  - num_velocities: {tokenizer_config.num_velocities}")
+
+                # Create tokenizer with the stored configuration
+                tokenizer = self.tokenizer_manager.create_tokenizer(strategy, tokenizer_config)
+            else:
+                # Fallback: use default config if no stored config found
+                logger.warning("No tokenizer_config found in JSON, using default configuration")
+                tokenizer = self.tokenizer_manager.create_tokenizer(strategy)
 
             # Get the global token sequence
             global_tokens = json_data.get("global_tokens", [])
