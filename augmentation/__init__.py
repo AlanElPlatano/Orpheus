@@ -9,6 +9,7 @@ from .transpose_tokenized_json import (
     transpose_json_file,
     batch_transpose_directory,
     calculate_new_key,
+    update_filename_key,
     SEMITONE_OFFSETS
 )
 
@@ -16,5 +17,6 @@ __all__ = [
     'transpose_json_file',
     'batch_transpose_directory',
     'calculate_new_key',
+    'update_filename_key',
     'SEMITONE_OFFSETS'
 ]

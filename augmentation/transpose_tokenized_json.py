@@ -174,6 +174,30 @@ def calculate_file_hash(tokens: List[int]) -> str:
     return hashlib.md5(token_bytes).hexdigest()
 
 
+def update_filename_key(filename: str, original_key: str, new_key: str) -> str:
+    """
+    Update the key in a filename while preserving the rest of the name.
+
+    Args:
+        filename: Original filename (e.g., "Fm-125bpm-remi-dime.json")
+        original_key: Original key to replace (e.g., "Fm")
+        new_key: New key to insert (e.g., "Gm")
+
+    Returns:
+        Updated filename with new key
+
+    Example:
+        >>> update_filename_key("Fm-125bpm-remi-dime.json", "Fm", "Gm")
+        'Gm-125bpm-remi-dime.json'
+    """
+    # Check if filename starts with the original key followed by a hyphen
+    if filename.startswith(f"{original_key}-"):
+        return filename.replace(f"{original_key}-", f"{new_key}-", 1)
+
+    # If the pattern doesn't match, just prepend the new key
+    return f"{new_key}-{filename}"
+
+
 def transpose_json_file(
     input_path: Path,
     output_dir: Path,
@@ -225,14 +249,19 @@ def transpose_json_file(
         pitch_range
     )
 
+    # Extract base filename and remove any previous transposition suffix
     stem = input_path.stem
     if '-transpose' in stem:
         base_stem = stem.split('-transpose')[0]
     else:
         base_stem = stem
 
+    # Update the key in the filename
+    base_stem_with_new_key = update_filename_key(base_stem, original_key, new_key)
+
+    # Add transposition suffix
     sign = '+' if semitones >= 0 else ''
-    output_filename = f"{base_stem}-transpose{sign}{semitones}.json"
+    output_filename = f"{base_stem_with_new_key}-transpose{sign}{semitones}.json"
     output_path = output_dir / output_filename
 
     if output_path.exists() and not overwrite:
