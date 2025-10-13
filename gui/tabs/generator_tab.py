@@ -87,7 +87,7 @@ def create_generator_tab() -> gr.Tab:
                 )
                 
                 gr.Button(
-                    "🎼 Generate Music",
+                    "Generate Music",
                     variant="primary",
                     interactive=False
                 )

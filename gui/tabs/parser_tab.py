@@ -135,7 +135,7 @@ def process_batch_files(
     
     # Build summary
     summary = f"""
-## 📊 Batch Processing Complete
+## Batch Processing Complete
 
 **Total Files:** {len(results)}
 **Successful:** {successful} ✅
@@ -174,7 +174,7 @@ def cancel_processing() -> str:
     """
     if app_state.parser:
         app_state.parser.cancel_operation()
-        return "⏹️ Cancellation requested..."
+        return "Cancellation requested..."
     return "No active processing"
 
 
@@ -227,13 +227,13 @@ For AI training: Uncompressed is recommended as it eliminates decompression over
 
                 with gr.Row():
                     process_parser_btn = gr.Button(
-                        "🚀 Process Files",
+                        "Process Files",
                         variant="primary",
                         size="lg"
                     )
 
                     cancel_parser_btn = gr.Button(
-                        "⏹️ Cancel",
+                        "Cancel",
                         variant="stop"
                     )
 

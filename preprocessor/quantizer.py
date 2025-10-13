@@ -1,7 +1,7 @@
 import warnings
 import pretty_midi
 from typing import Optional
-from bpm_reader import get_tempo_from_midi
+from .bpm_reader import get_tempo_from_midi
 
 
 def quantize_midi_timing(

@@ -1,12 +1,12 @@
 from typing import Optional, Tuple, Dict
 import pretty_midi
 
-from bpm_reader import get_tempo_from_midi
-from stats import get_preprocessing_stats
-from cleanup import preprocess_notes
-from quantizer import quantize_midi_timing
-from remove_empty_tracks import remove_empty_tracks
-from remove_bass_tracks import remove_bass_tracks
+from .bpm_reader import get_tempo_from_midi
+from .stats import get_preprocessing_stats
+from .cleanup import preprocess_notes
+from .quantizer import quantize_midi_timing
+from .remove_empty_tracks import remove_empty_tracks
+from .remove_bass_tracks import remove_bass_tracks
 
 
 def process_midi_file(

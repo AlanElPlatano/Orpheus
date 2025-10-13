@@ -1,6 +1,6 @@
 from typing import Dict, Optional
 import pretty_midi
-from bpm_reader import get_tempo_from_midi
+from .bpm_reader import get_tempo_from_midi
 
 
 def get_preprocessing_stats(

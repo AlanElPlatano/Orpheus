@@ -1,12 +1,12 @@
 import pretty_midi
 from typing import Optional, Tuple, Dict
 
-from bpm_reader import get_tempo_from_midi
-from quantizer import quantize_midi_timing
-from cleanup import preprocess_notes
-from remove_empty_tracks import remove_empty_tracks
-from remove_bass_tracks import remove_bass_tracks
-from stats import get_preprocessing_stats
+from .bpm_reader import get_tempo_from_midi
+from .quantizer import quantize_midi_timing
+from .cleanup import preprocess_notes
+from .remove_empty_tracks import remove_empty_tracks
+from .remove_bass_tracks import remove_bass_tracks
+from .stats import get_preprocessing_stats
 
 
 class MIDIPreprocessor:
@@ -127,11 +127,11 @@ class MIDIPreprocessor:
         """
         # Clear tempo cache for new file
         self.clear_tempo_cache()
-        
-        from process_midi_file import process_midi_file as _process
+
+        from .process_midi_file import process_midi_file as _process
         return _process(
-            file_path, 
-            quantize_grid=quantize_grid, 
+            file_path,
+            quantize_grid=quantize_grid,
             remove_empty=remove_empty,
             remove_bass=remove_bass,
             bass_threshold=bass_threshold,

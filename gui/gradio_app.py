@@ -34,7 +34,7 @@ def create_interface() -> gr.Blocks:
 
         # Header
         gr.Markdown("""
-        # 🎵 Orpheus - AI Music Generation Pipeline
+        # Orpheus - Music Composer
         
         Complete toolkit for MIDI processing, tokenization, and AI music generation.
         """)
