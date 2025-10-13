@@ -14,6 +14,7 @@ from pathlib import Path
 from gui.tabs import (
     create_preprocess_tab,
     create_parser_tab,
+    create_augmentation_tab,
     create_json_to_midi_tab,
     create_training_tab,
     create_generator_tab
@@ -34,15 +35,14 @@ def create_interface() -> gr.Blocks:
 
         # Header
         gr.Markdown("""
-        # Orpheus - Music Composer
-        
-        Complete toolkit for MIDI processing, tokenization, AI training and music generation.
+        # Orpheus
         """)
 
         # Create all tabs
         with gr.Tabs():
             create_preprocess_tab()
             create_parser_tab()
+            create_augmentation_tab()
             create_training_tab()
             create_generator_tab()
             create_json_to_midi_tab()
