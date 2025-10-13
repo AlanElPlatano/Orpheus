@@ -4,73 +4,47 @@
 Build the simplest possible AI that can generate a melody over a chord progression using MIDI data.
 
 ## What We're Building
-- **Input**: A simple chord progression (like C-Am-F-G)
-- **Output**: A single melody line that sounds good over those chords
-- **Architecture**: Basic LSTM model
-- **Dataset**: Lakh MIDI (filtered to simple files only)
+- **Input**: MIDI files with sample songs for AI generation
+- **Output**: MIDI files generated from training on input files
+- **Architecture**: Pytorch AI
+- **Dataset**: Hand curated MIDI dataset
 
 ## Technical Stack
-- **Python 3.8+**
+- **Python 3.10.8+**
 - **PyTorch** (for the neural network)
 - **pretty_midi** (for MIDI file handling)
 - **numpy** (for data processing)
+- **miditok** (for tokenization of MIDIs)
+- **Gradio** (for GUI building)
 
-## Data Representation (Keep It Simple)
-We'll represent music as a sequence of events:
-- `NOTE_ON_60` (start playing middle C)
-- `NOTE_OFF_60` (stop playing middle C)  
-- `WAIT_120` (wait 120 milliseconds)
-- `CHORD_C` (chord change to C major)
+## Data Representation
+We'll represent music as a sequence of tokens using miditok's REMI strategy with bar tokens (REMI+)
 
 ## Phase 1: Data Exploration (Week 1)
 **Goal**: Understand what's in MIDI files
 
 ### Step 1.1: Download and Look at Data
 ```bash
-# Download a small subset of Lakh MIDI dataset
-# Start with just 100 files to keep it manageable
+# Obtain a portion of the MIDI training dataset
 ```
 
 ### Step 1.2: Basic MIDI Parsing
 Write a script that:
 - Opens a MIDI file
-- Prints basic info (duration, number of tracks, tempo)
+- Reads basic info (duration, number of tracks, tempo)
 - Extracts all notes and their timing
-- Saves this info to a text file
-
-### Step 1.3: Find Simple Files
-Filter the dataset to find files that have:
-- Only 1-2 instruments (no drums)
-- Duration between 30-120 seconds
-- Not too many notes (avoid classical pieces with rapid passages)
-
-**Deliverable**: A folder with ~50 "simple" MIDI files
+- Tokenizes all this info using Miditok with the REMI+ tokenizer
 
 ## Phase 2: Manual Data Preparation (Week 2)
-**Goal**: Create a tiny, hand-curated training dataset
+**Goal**: Create a hand-curated training dataset
 
-### Step 2.1: Create Training Examples by Hand
-Pick 5-10 of your simplest MIDI files and manually:
-- Identify which track has chords (multiple simultaneous notes)
-- Identify which track has melody (single notes)
-- Write down the chord progression by listening
-- Note the key signature
+- Create files with a strict 2 track (melody-chords) structure
 
 ### Step 2.2: Basic Tokenization
-Convert your hand-picked files into token sequences:
-```python
-# Example output for "Twinkle Twinkle Little Star" in C major:
-tokens = [
-    "CHORD_C", "NOTE_ON_60", "WAIT_500", "NOTE_OFF_60", 
-    "NOTE_ON_60", "WAIT_500", "NOTE_OFF_60",
-    "NOTE_ON_67", "WAIT_500", "NOTE_OFF_67",
-    "NOTE_ON_67", "WAIT_1000", "NOTE_OFF_67",
-    "CHORD_F", "NOTE_ON_65", "WAIT_500", "NOTE_OFF_65"
-    # ... etc
-]
-```
+Convert your hand-picked files into token sequences using Miditok's REMI+ tokenizer:
 
-**Deliverable**: 5-10 files converted to token sequences, saved as text files
+
+**Deliverable**: 5-10 files converted to token sequences, saved as JSON files
 
 ## Phase 3: Simplest Possible Model (Week 3)
 **Goal**: Build an LSTM that can learn to continue a sequence
