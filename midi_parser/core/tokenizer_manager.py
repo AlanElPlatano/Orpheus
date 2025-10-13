@@ -902,7 +902,7 @@ def diagnose_miditok_config(tokenizer: Any, strategy: str) -> None:
             'programs': ['program', 'instrument']
         }
         
-        logger.info("\n🔍 Vocabulary Token Search:")
+        logger.info("\nVocabulary Token Search:")
         
         # Flatten vocab if needed
         flat_vocab = {}

@@ -147,7 +147,7 @@ def recover_backup_files(backup_selection: str, input_dir: str) -> Tuple[str, st
 
     # Build summary
     summary = f"""
-## 📂 Recovery Complete
+## Recovery Complete
 
 **Recovered From:** `{backup_path}`
 **Restored To:** `{input_path}`
