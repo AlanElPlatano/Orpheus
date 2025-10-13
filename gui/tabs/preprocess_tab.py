@@ -348,9 +348,9 @@ All files will be permanently modified with the selected preprocessing options.
 
 **We strongly recommend backing up your files before proceeding.**
 
-Click the "💾 Backup MIDI Files" button above before processing.
+Click the "Backup MIDI Files" button above before processing.
 
-If you're sure you want to continue, click "🔧 Process Files" again.
+If you're sure you want to continue, click "Process Files" again.
 """
 
 

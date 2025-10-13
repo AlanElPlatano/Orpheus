@@ -28,7 +28,7 @@ def create_interface() -> gr.Blocks:
         Gradio Blocks interface
     """
     with gr.Blocks(
-        title="Orpheus - AI Music Generation",
+        title="Orpheus",
         theme=gr.themes.Soft(primary_hue="blue", secondary_hue="purple")
     ) as app:
 
@@ -36,7 +36,7 @@ def create_interface() -> gr.Blocks:
         gr.Markdown("""
         # Orpheus - Music Composer
         
-        Complete toolkit for MIDI processing, tokenization, and AI music generation.
+        Complete toolkit for MIDI processing, tokenization, AI training and music generation.
         """)
 
         # Create all tabs
