@@ -218,7 +218,7 @@ def create_parser_tab() -> gr.Tab:
 
                 compress_json = gr.Checkbox(
                     label="Compress JSON output (.json.gz)",
-                    value=True,
+                    value=False,
                     info="""🔵 Compressed (.json.gz): 5-10x smaller files, great for storage
 🟢 Uncompressed (.json): Faster PyTorch DataLoader reads, better for training
 
