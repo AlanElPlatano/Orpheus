@@ -24,6 +24,7 @@ from .scheduler import (
 )
 
 from .trainer import Trainer
+from .gradio_trainer import GradioTrainer, TrainingMetrics
 
 __all__ = [
     # Loss functions
@@ -45,5 +46,7 @@ __all__ = [
     'get_all_lrs',
 
     # Trainer
-    'Trainer'
+    'Trainer',
+    'GradioTrainer',
+    'TrainingMetrics'
 ]
