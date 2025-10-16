@@ -1,0 +1,429 @@
+"""
+Main training loop orchestrator.
+
+This module implements the Trainer class that handles the complete training
+workflow including training loop, validation, checkpointing, and logging.
+"""
+
+import torch
+import time
+from pathlib import Path
+from typing import Optional, Dict
+from torch.utils.data import DataLoader
+from torch.cuda.amp import GradScaler, autocast
+
+from ..model.transformer import MusicTransformer
+from ..config.training_config import TrainingConfig
+from .loss import create_loss_function, compute_perplexity
+from .optimizer import create_optimizer, clip_gradients, get_gradient_norm
+from .scheduler import create_scheduler, get_current_lr
+from ..utils.device_utils import get_device, to_device, print_device_info, print_memory_info
+from ..utils.checkpoint_utils import (
+    save_checkpoint, load_checkpoint, save_best_model,
+    cleanup_old_checkpoints, get_latest_checkpoint
+)
+from ..utils.logging_utils import (
+    TrainingLogger, MetricsTracker, format_time,
+    print_training_header, print_epoch_summary, print_progress
+)
+
+
+class Trainer:
+    """
+    Training orchestrator for music generation model.
+
+    Handles:
+    - Training loop with gradient accumulation
+    - Validation loop
+    - Checkpointing and model saving
+    - Learning rate scheduling
+    - Mixed precision training
+    - Early stopping
+    - Progress logging
+    """
+
+    def __init__(
+        self,
+        model: MusicTransformer,
+        config: TrainingConfig,
+        train_loader: DataLoader,
+        val_loader: Optional[DataLoader] = None
+    ):
+        """
+        Initialize trainer.
+
+        Args:
+            model: Model to train
+            config: Training configuration
+            train_loader: Training data loader
+            val_loader: Validation data loader (optional)
+        """
+        self.config = config
+        self.train_loader = train_loader
+        self.val_loader = val_loader
+
+        # Setup device
+        self.device = get_device(config.device)
+        self.model = model.to(self.device)
+
+        # Setup loss function
+        self.loss_fn = create_loss_function(
+            loss_type=config.loss_type,
+            ignore_index=config.ignore_index,
+            label_smoothing=config.label_smoothing
+        )
+
+        # Setup optimizer
+        self.optimizer = create_optimizer(
+            model=self.model,
+            optimizer_type="adamw",
+            learning_rate=config.learning_rate,
+            weight_decay=config.weight_decay,
+            beta1=config.adam_beta1,
+            beta2=config.adam_beta2,
+            epsilon=config.adam_epsilon
+        )
+
+        # Setup learning rate scheduler
+        num_training_steps = config.get_total_steps(len(train_loader.dataset))
+        self.scheduler = create_scheduler(
+            optimizer=self.optimizer,
+            scheduler_type=config.lr_scheduler_type,
+            num_warmup_steps=config.warmup_steps,
+            num_training_steps=num_training_steps,
+            min_lr_ratio=config.min_lr_ratio
+        )
+
+        # Setup mixed precision training
+        self.scaler = GradScaler() if config.mixed_precision else None
+
+        # Setup logging
+        self.logger = TrainingLogger(
+            log_dir=config.log_dir,
+            use_tensorboard=config.use_tensorboard,
+            use_wandb=config.use_wandb,
+            wandb_project=config.wandb_project,
+            wandb_run_name=config.wandb_run_name
+        )
+
+        # Training state
+        self.current_epoch = 0
+        self.global_step = 0
+        self.best_val_loss = float('inf')
+        self.patience_counter = 0
+
+        # Log configuration
+        self.logger.log_hyperparameters(config.to_dict())
+
+        # Print configuration
+        print_training_header(config)
+        print_device_info(self.device)
+        if self.device.type == "cuda":
+            print_memory_info(self.device)
+
+    def train_epoch(self) -> Dict[str, float]:
+        """
+        Train for one epoch.
+
+        Returns:
+            Dictionary with training metrics
+        """
+        self.model.train()
+        metrics_tracker = MetricsTracker()
+
+        epoch_start_time = time.time()
+
+        for batch_idx, batch in enumerate(self.train_loader):
+            # Move batch to device
+            batch = to_device(batch, self.device)
+
+            # Forward pass with optional mixed precision
+            with autocast(enabled=self.config.mixed_precision):
+                logits, _ = self.model(
+                    input_ids=batch['input_ids'],
+                    attention_mask=batch['attention_mask']
+                )
+
+                # Compute loss
+                loss = self.loss_fn(logits, batch['labels'])
+
+                # Scale loss for gradient accumulation
+                loss = loss / self.config.gradient_accumulation_steps
+
+            # Backward pass
+            if self.scaler is not None:
+                self.scaler.scale(loss).backward()
+            else:
+                loss.backward()
+
+            # Update weights after accumulation steps
+            if (batch_idx + 1) % self.config.gradient_accumulation_steps == 0:
+                # Clip gradients
+                if self.scaler is not None:
+                    self.scaler.unscale_(self.optimizer)
+
+                grad_norm = clip_gradients(
+                    self.model,
+                    self.config.max_grad_norm
+                )
+
+                # Optimizer step
+                if self.scaler is not None:
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
+                else:
+                    self.optimizer.step()
+
+                # Scheduler step
+                self.scheduler.step()
+
+                # Zero gradients
+                self.optimizer.zero_grad()
+
+                # Update global step
+                self.global_step += 1
+
+                # Track metrics
+                metrics_tracker.update({
+                    'loss': loss.item() * self.config.gradient_accumulation_steps,
+                    'perplexity': compute_perplexity(loss).item(),
+                    'grad_norm': grad_norm,
+                    'learning_rate': get_current_lr(self.optimizer)
+                })
+
+                # Log progress
+                if self.global_step % self.config.log_interval == 0:
+                    avg_metrics = metrics_tracker.get_averages()
+                    self.logger.log_metrics(
+                        avg_metrics,
+                        step=self.global_step,
+                        prefix="train/"
+                    )
+                    metrics_tracker.reset()
+
+                # Validation
+                if self.config.do_validation and \
+                   self.val_loader is not None and \
+                   self.global_step % self.config.validation_interval == 0:
+                    val_metrics = self.validate()
+                    self.logger.log_metrics(
+                        val_metrics,
+                        step=self.global_step,
+                        prefix="val/"
+                    )
+
+                    # Save best model
+                    if val_metrics['loss'] < self.best_val_loss:
+                        self.best_val_loss = val_metrics['loss']
+                        self.patience_counter = 0
+                        save_best_model(
+                            checkpoint_dir=self.config.checkpoint_dir,
+                            model=self.model,
+                            optimizer=self.optimizer,
+                            scheduler=self.scheduler,
+                            epoch=self.current_epoch,
+                            step=self.global_step,
+                            val_loss=self.best_val_loss,
+                            config=self.config.to_dict()
+                        )
+                        self.logger.log(f"New best model saved! Val loss: {self.best_val_loss:.4f}")
+                    else:
+                        self.patience_counter += 1
+
+                    # Early stopping check
+                    if self.config.early_stopping and \
+                       self.patience_counter >= self.config.early_stopping_patience:
+                        self.logger.log(
+                            f"Early stopping triggered after {self.patience_counter} "
+                            f"validation intervals without improvement"
+                        )
+                        return metrics_tracker.get_averages()
+
+                    # Back to training mode
+                    self.model.train()
+
+                # Save checkpoint
+                if not self.config.save_best_only and \
+                   self.global_step % self.config.checkpoint_interval == 0:
+                    checkpoint_path = self.config.checkpoint_dir / \
+                                    f"checkpoint_step_{self.global_step}.pt"
+                    save_checkpoint(
+                        checkpoint_path=checkpoint_path,
+                        model=self.model,
+                        optimizer=self.optimizer,
+                        scheduler=self.scheduler,
+                        epoch=self.current_epoch,
+                        step=self.global_step,
+                        best_val_loss=self.best_val_loss,
+                        config=self.config.to_dict()
+                    )
+
+                    # Cleanup old checkpoints
+                    cleanup_old_checkpoints(
+                        self.config.checkpoint_dir,
+                        max_to_keep=self.config.max_checkpoints_to_keep
+                    )
+
+                # Check max steps
+                if self.config.max_steps is not None and \
+                   self.global_step >= self.config.max_steps:
+                    self.logger.log(f"Reached max steps: {self.config.max_steps}")
+                    break
+
+            # Overfit batch mode (for debugging)
+            if self.config.overfit_batch:
+                break
+
+        epoch_time = time.time() - epoch_start_time
+        return {
+            **metrics_tracker.get_averages(),
+            'epoch_time': epoch_time
+        }
+
+    @torch.no_grad()
+    def validate(self) -> Dict[str, float]:
+        """
+        Run validation loop.
+
+        Returns:
+            Dictionary with validation metrics
+        """
+        self.model.eval()
+        metrics_tracker = MetricsTracker()
+
+        num_batches = len(self.val_loader)
+        if self.config.validation_batches is not None:
+            num_batches = min(num_batches, self.config.validation_batches)
+
+        for batch_idx, batch in enumerate(self.val_loader):
+            if batch_idx >= num_batches:
+                break
+
+            # Move batch to device
+            batch = to_device(batch, self.device)
+
+            # Forward pass
+            with autocast(enabled=self.config.mixed_precision):
+                logits, _ = self.model(
+                    input_ids=batch['input_ids'],
+                    attention_mask=batch['attention_mask']
+                )
+
+                # Compute loss
+                loss = self.loss_fn(logits, batch['labels'])
+
+            # Track metrics
+            metrics_tracker.update({
+                'loss': loss.item(),
+                'perplexity': compute_perplexity(loss).item()
+            })
+
+        return metrics_tracker.get_averages()
+
+    def train(self):
+        """
+        Main training loop.
+
+        Runs training for the specified number of epochs or steps,
+        with validation, checkpointing, and early stopping.
+        """
+        self.logger.log("Starting training...")
+        training_start_time = time.time()
+
+        try:
+            for epoch in range(self.current_epoch, self.config.num_epochs):
+                self.current_epoch = epoch
+
+                self.logger.log(f"\nEpoch {epoch + 1}/{self.config.num_epochs}")
+
+                # Train for one epoch
+                train_metrics = self.train_epoch()
+
+                # Validate at end of epoch
+                val_metrics = None
+                if self.config.do_validation and self.val_loader is not None:
+                    val_metrics = self.validate()
+                    self.logger.log_metrics(
+                        val_metrics,
+                        step=self.global_step,
+                        prefix="val/"
+                    )
+
+                # Print epoch summary
+                print_epoch_summary(
+                    epoch=epoch + 1,
+                    train_loss=train_metrics['loss'],
+                    val_loss=val_metrics['loss'] if val_metrics else None,
+                    learning_rate=get_current_lr(self.optimizer),
+                    epoch_time=train_metrics.get('epoch_time', 0)
+                )
+
+                # Check max steps
+                if self.config.max_steps is not None and \
+                   self.global_step >= self.config.max_steps:
+                    break
+
+                # Check early stopping
+                if self.config.early_stopping and \
+                   self.patience_counter >= self.config.early_stopping_patience:
+                    self.logger.log("Early stopping triggered")
+                    break
+
+        except KeyboardInterrupt:
+            self.logger.log("\nTraining interrupted by user")
+
+        finally:
+            # Save final checkpoint
+            final_checkpoint_path = self.config.checkpoint_dir / "final_checkpoint.pt"
+            save_checkpoint(
+                checkpoint_path=final_checkpoint_path,
+                model=self.model,
+                optimizer=self.optimizer,
+                scheduler=self.scheduler,
+                epoch=self.current_epoch,
+                step=self.global_step,
+                best_val_loss=self.best_val_loss,
+                config=self.config.to_dict()
+            )
+
+            training_time = time.time() - training_start_time
+            self.logger.log(f"\nTraining completed!")
+            self.logger.log(f"Total training time: {format_time(training_time)}")
+            self.logger.log(f"Best validation loss: {self.best_val_loss:.4f}")
+            self.logger.log(f"Total steps: {self.global_step}")
+
+            # Close loggers
+            self.logger.close()
+
+    def resume_from_checkpoint(self, checkpoint_path: Optional[Path] = None):
+        """
+        Resume training from a checkpoint.
+
+        Args:
+            checkpoint_path: Path to checkpoint file (optional, uses latest if not provided)
+        """
+        if checkpoint_path is None:
+            checkpoint_path = get_latest_checkpoint(self.config.checkpoint_dir)
+
+        if checkpoint_path is None:
+            self.logger.log("No checkpoint found to resume from")
+            return
+
+        self.logger.log(f"Resuming from checkpoint: {checkpoint_path}")
+
+        metadata = load_checkpoint(
+            checkpoint_path=checkpoint_path,
+            model=self.model,
+            optimizer=self.optimizer,
+            scheduler=self.scheduler,
+            device=self.device
+        )
+
+        self.current_epoch = metadata['epoch']
+        self.global_step = metadata['step']
+        self.best_val_loss = metadata.get('best_val_loss', float('inf'))
+
+        self.logger.log(f"Resumed from epoch {self.current_epoch}, step {self.global_step}")
+
+
+__all__ = ['Trainer']
