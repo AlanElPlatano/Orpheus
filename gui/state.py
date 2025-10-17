@@ -39,6 +39,13 @@ class AppState:
             'steps': []
         }
         self.training_active = False
+
+        # Generator state
+        self.generator: Optional[Any] = None  # MusicGenerator instance
+        self.generation_logs: List[str] = []
+        self.generation_results: List[Dict[str, Any]] = []
+        self.generation_active = False
+        self.generator_loaded = False
     
     def initialize_parser(self, mode: str, compress: bool) -> None:
         """
@@ -152,6 +159,57 @@ class AppState:
             'learning_rate': [],
             'steps': []
         }
+
+    def initialize_generator(self, generator: Any) -> None:
+        """
+        Initialize or replace generator instance.
+
+        Args:
+            generator: MusicGenerator instance
+        """
+        self.generator = generator
+        self.generator_loaded = True
+        self.generation_logs.clear()
+        self.generation_results.clear()
+
+    def add_generation_log(self, log_message: str) -> None:
+        """
+        Add a generation log message.
+
+        Args:
+            log_message: Log message to add
+        """
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        self.generation_logs.append(f"[{timestamp}] {log_message}")
+
+    def get_recent_generation_logs(self, count: int = 50) -> str:
+        """
+        Get recent generation log entries.
+
+        Args:
+            count: Number of recent entries to return
+
+        Returns:
+            Formatted log string
+        """
+        return "\n".join(self.generation_logs[-count:])
+
+    def add_generation_result(self, result: Dict[str, Any]) -> None:
+        """
+        Add a generation result.
+
+        Args:
+            result: Generation result dictionary
+        """
+        self.generation_results.append(result)
+
+    def clear_generation_state(self) -> None:
+        """Clear generator state."""
+        self.generator = None
+        self.generator_loaded = False
+        self.generation_active = False
+        self.generation_logs.clear()
+        self.generation_results.clear()
 
 
 # Global state instance shared across the application

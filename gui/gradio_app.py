@@ -68,7 +68,7 @@ def main():
     
     app.launch(
         server_name="localhost",
-        server_port=7860,
+        server_port=42069,
         share=False,
         show_error=True,
         favicon_path=None,
