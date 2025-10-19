@@ -208,6 +208,27 @@ CORRIDOS_DEFAULT_TEMPO = 125
 
 
 # ============================================================================
+# Track Type Definitions
+# ============================================================================
+
+class TrackType(IntEnum):
+    """
+    Track type identifiers for multi-track music generation.
+
+    These are used to distinguish between different types of tracks
+    (melody vs chords) in the model.
+    """
+    MELODY = 0  # Monophonic melody track
+    CHORD = 1   # Chord/harmony track (no rhythmic variation)
+
+
+# Convenience constants
+TRACK_TYPE_MELODY = TrackType.MELODY
+TRACK_TYPE_CHORD = TrackType.CHORD
+NUM_TRACK_TYPES = 2  # Number of distinct track types
+
+
+# ============================================================================
 # Program (Instrument) Definitions
 # ============================================================================
 
@@ -357,6 +378,27 @@ def is_metadata_token(token_id: int) -> bool:
     )
 
 
+def get_track_type_from_program(program_id: int) -> int:
+    """
+    Determine track type (MELODY or CHORD) based on program/instrument ID.
+
+    Args:
+        program_id: MIDI program number (0-127)
+
+    Returns:
+        TrackType.MELODY or TrackType.CHORD
+    """
+    # For corridos: melody is program 98, chords is program 29
+    if program_id == CORRIDOS_MELODY_PROGRAM:
+        return TRACK_TYPE_MELODY
+    elif program_id == CORRIDOS_CHORD_PROGRAM:
+        return TRACK_TYPE_CHORD
+    else:
+        # Default heuristic: higher program numbers tend to be leads/melody
+        # Lower numbers tend to be harmonic instruments
+        return TRACK_TYPE_MELODY if program_id >= 80 else TRACK_TYPE_CHORD
+
+
 __all__ = [
     # Special tokens
     'SpecialTokens',
@@ -368,6 +410,12 @@ __all__ = [
 
     # Token ranges
     'TOKEN_RANGES',
+
+    # Track types
+    'TrackType',
+    'TRACK_TYPE_MELODY',
+    'TRACK_TYPE_CHORD',
+    'NUM_TRACK_TYPES',
 
     # Musical constants
     'MIN_PITCH',
@@ -418,6 +466,10 @@ __all__ = [
     'CORRIDOS_MIN_TEMPO',
     'CORRIDOS_MAX_TEMPO',
 
+    # Corridos programs
+    'CORRIDOS_MELODY_PROGRAM',
+    'CORRIDOS_CHORD_PROGRAM',
+
     # Utility functions
     'get_token_type',
     'is_special_token',
@@ -425,4 +477,5 @@ __all__ = [
     'is_duration_token',
     'is_position_token',
     'is_metadata_token',
+    'get_track_type_from_program',
 ]
