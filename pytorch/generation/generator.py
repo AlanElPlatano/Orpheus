@@ -100,7 +100,9 @@ class MusicGenerator:
                 num_heads=model_config['num_heads'],
                 ff_dim=model_config['ff_dim'],
                 max_len=model_config['max_len'],
-                dropout=model_config.get('dropout', 0.1)
+                dropout=model_config.get('dropout', 0.1),
+                use_track_embeddings=model_config.get('use_track_embeddings', False),
+                num_track_types=model_config.get('num_track_types', 2)
             )
 
             # Load model weights
@@ -141,12 +143,18 @@ class MusicGenerator:
                 }
 
             # Initialize two-stage generator
+            # Enable track-aware sampling if model supports it
+            use_track_aware = model_config.get('use_track_embeddings', False)
+
             self.two_stage_generator = TwoStageGenerator(
                 model=self.model,
                 vocab_info=self.vocab_info,
                 config=self.config,
-                device=str(self.device)
+                device=str(self.device),
+                use_track_aware_sampling=use_track_aware
             )
+
+            logger.info(f"Two-stage generator track-aware sampling: {use_track_aware}")
 
             # Initialize validator
             self.validator = ConstraintValidator(self.vocab_info)

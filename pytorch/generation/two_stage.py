@@ -18,11 +18,13 @@ from ..data.constants import (
     BOS_TOKEN_ID,
     EOS_TOKEN_ID,
     BAR_TOKEN_ID,
+    TRACK_TYPE_MELODY,
+    TRACK_TYPE_CHORD,
     is_pitch_token,
     is_duration_token
 )
 from ..model.constraints import GenerationState
-from .sampling import sample_next_token
+from .sampling import sample_next_token, sample_next_token_track_aware
 from .constrained_decode import (
     update_generation_state,
     apply_all_constraints,
@@ -46,7 +48,8 @@ class TwoStageGenerator:
         model: torch.nn.Module,
         vocab_info: 'VocabularyInfo',
         config: 'GenerationConfig',
-        device: str = 'cuda'
+        device: str = 'cuda',
+        use_track_aware_sampling: bool = True
     ):
         """
         Initialize two-stage generator.
@@ -56,11 +59,13 @@ class TwoStageGenerator:
             vocab_info: Vocabulary information
             config: Generation configuration
             device: Device to run on ('cuda' or 'cpu')
+            use_track_aware_sampling: Whether to use track-aware constraints (default: True)
         """
         self.model = model
         self.vocab_info = vocab_info
         self.config = config
         self.device = device
+        self.use_track_aware_sampling = use_track_aware_sampling
 
         # Build pitch token to MIDI mapping for diatonic constraints
         self.pitch_token_to_midi = self._build_pitch_mapping()
@@ -69,6 +74,7 @@ class TwoStageGenerator:
         self.model.eval()
 
         logger.info(f"TwoStageGenerator initialized on {device}")
+        logger.info(f"Track-aware sampling: {use_track_aware_sampling}")
 
     def _build_pitch_mapping(self) -> Dict[int, int]:
         """
@@ -182,18 +188,29 @@ class TwoStageGenerator:
                     self.config.key
                 )
 
-                # Mask melody-specific tokens (optional - depends on design choice)
-                # For now, we'll let the model generate naturally and rely on constraints
-
-                # Sample next token
-                next_token, probs = sample_next_token(
-                    constrained_logits,
-                    temperature=self.config.temperature,
-                    top_k=self.config.top_k,
-                    top_p=self.config.top_p,
-                    generated_tokens=input_ids,
-                    repetition_penalty=self.config.repetition_penalty
-                )
+                # Sample next token with track-aware constraints
+                if self.use_track_aware_sampling:
+                    # Use track-aware sampling for CHORD track
+                    next_token, probs = sample_next_token_track_aware(
+                        constrained_logits,
+                        track_type=TRACK_TYPE_CHORD,  # Chord track constraints
+                        temperature=self.config.temperature,
+                        top_k=self.config.top_k,
+                        top_p=self.config.top_p,
+                        generated_tokens=input_ids,
+                        repetition_penalty=self.config.repetition_penalty,
+                        apply_constraints=True
+                    )
+                else:
+                    # Use standard sampling without track constraints
+                    next_token, probs = sample_next_token(
+                        constrained_logits,
+                        temperature=self.config.temperature,
+                        top_k=self.config.top_k,
+                        top_p=self.config.top_p,
+                        generated_tokens=input_ids,
+                        repetition_penalty=self.config.repetition_penalty
+                    )
 
                 next_token_id = next_token.item()
 
@@ -271,15 +288,29 @@ class TwoStageGenerator:
                     self.config.key
                 )
 
-                # Sample next token
-                next_token, probs = sample_next_token(
-                    constrained_logits,
-                    temperature=self.config.temperature,
-                    top_k=self.config.top_k,
-                    top_p=self.config.top_p,
-                    generated_tokens=input_ids,
-                    repetition_penalty=self.config.repetition_penalty
-                )
+                # Sample next token with track-aware constraints
+                if self.use_track_aware_sampling:
+                    # Use track-aware sampling for MELODY track
+                    next_token, probs = sample_next_token_track_aware(
+                        constrained_logits,
+                        track_type=TRACK_TYPE_MELODY,  # Melody track constraints
+                        temperature=self.config.temperature,
+                        top_k=self.config.top_k,
+                        top_p=self.config.top_p,
+                        generated_tokens=input_ids,
+                        repetition_penalty=self.config.repetition_penalty,
+                        apply_constraints=True
+                    )
+                else:
+                    # Use standard sampling without track constraints
+                    next_token, probs = sample_next_token(
+                        constrained_logits,
+                        temperature=self.config.temperature,
+                        top_k=self.config.top_k,
+                        top_p=self.config.top_p,
+                        generated_tokens=input_ids,
+                        repetition_penalty=self.config.repetition_penalty
+                    )
 
                 next_token_id = next_token.item()
 
