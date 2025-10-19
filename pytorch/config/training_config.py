@@ -51,6 +51,10 @@ class TrainingConfig:
     context_length: int = 2048
     dropout: float = 0.1
 
+    # Track-aware model settings
+    use_track_embeddings: bool = True  # Use track type embeddings (melody vs chord)
+    num_track_types: int = 2  # Number of track types
+
     # ========================================================================
     # Optimization settings
     # ========================================================================
@@ -78,9 +82,13 @@ class TrainingConfig:
     # ========================================================================
     # Loss settings
     # ========================================================================
-    loss_type: str = "weighted"  # "weighted" or "constraint_aware"
+    loss_type: str = "weighted"  # "weighted", "constraint_aware", or "track_aware"
     label_smoothing: float = 0.0  # Label smoothing factor (0.0 = no smoothing)
     ignore_index: int = -100  # Padding token index to ignore in loss
+
+    # Track-aware loss settings (only used when loss_type="track_aware")
+    melody_violation_weight: float = 10.0  # Weight for melody constraint violations
+    chord_violation_weight: float = 5.0  # Weight for chord constraint violations
 
     # ========================================================================
     # Validation and evaluation
@@ -274,12 +282,55 @@ def get_production_config() -> TrainingConfig:
     )
 
 
+def get_track_aware_config() -> TrainingConfig:
+    """
+    Get configuration for track-aware training.
+
+    Uses track-aware loss and embeddings to learn different patterns
+    for melody vs chord tracks. Optimized for corridos music generation.
+    """
+    return TrainingConfig(
+        # Model settings
+        use_track_embeddings=True,
+        num_track_types=2,
+
+        # Loss settings
+        loss_type="track_aware",
+        melody_violation_weight=10.0,  # Heavy penalty for melody polyphony
+        chord_violation_weight=5.0,    # Medium penalty for chord rhythm
+
+        # Training settings
+        num_epochs=100,
+        batch_size=12,  # Slightly smaller to accommodate track embeddings
+        learning_rate=1e-4,
+        warmup_steps=1000,
+        gradient_accumulation_steps=1,
+
+        # Validation and logging
+        validation_interval=500,
+        checkpoint_interval=2000,
+        log_interval=100,
+
+        # Logging
+        use_tensorboard=True,
+        use_wandb=True,
+
+        # Early stopping
+        early_stopping=True,
+        early_stopping_patience=10,
+
+        # Performance
+        mixed_precision=True,
+        max_checkpoints_to_keep=5
+    )
+
+
 def get_config_by_name(name: str) -> TrainingConfig:
     """
     Get configuration by preset name.
 
     Args:
-        name: One of "default", "quick_test", "overfit", "production"
+        name: One of "default", "quick_test", "overfit", "production", "track_aware"
 
     Returns:
         TrainingConfig instance
@@ -288,7 +339,8 @@ def get_config_by_name(name: str) -> TrainingConfig:
         "default": get_default_config,
         "quick_test": get_quick_test_config,
         "overfit": get_overfit_config,
-        "production": get_production_config
+        "production": get_production_config,
+        "track_aware": get_track_aware_config
     }
 
     if name not in configs:
@@ -306,5 +358,6 @@ __all__ = [
     'get_quick_test_config',
     'get_overfit_config',
     'get_production_config',
+    'get_track_aware_config',
     'get_config_by_name'
 ]

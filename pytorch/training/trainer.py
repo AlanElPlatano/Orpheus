@@ -70,8 +70,13 @@ class Trainer:
         self.loss_fn = create_loss_function(
             loss_type=config.loss_type,
             ignore_index=config.ignore_index,
-            label_smoothing=config.label_smoothing
+            label_smoothing=config.label_smoothing,
+            melody_violation_weight=getattr(config, 'melody_violation_weight', 10.0),
+            chord_violation_weight=getattr(config, 'chord_violation_weight', 5.0)
         )
+
+        # Check if loss function is track-aware
+        self.use_track_aware_loss = config.loss_type == 'track_aware'
 
         # Setup optimizer
         self.optimizer = create_optimizer(
@@ -140,13 +145,20 @@ class Trainer:
 
             # Forward pass with optional mixed precision
             with autocast(enabled=self.config.mixed_precision):
+                # Pass track_ids if available
+                track_ids = batch.get('track_ids', None)
+
                 logits, _ = self.model(
                     input_ids=batch['input_ids'],
-                    attention_mask=batch['attention_mask']
+                    attention_mask=batch['attention_mask'],
+                    track_ids=track_ids
                 )
 
-                # Compute loss
-                loss = self.loss_fn(logits, batch['labels'])
+                # Compute loss (pass track_ids if using track-aware loss)
+                if self.use_track_aware_loss and track_ids is not None:
+                    loss = self.loss_fn(logits, batch['labels'], track_ids)
+                else:
+                    loss = self.loss_fn(logits, batch['labels'])
 
                 # Scale loss for gradient accumulation
                 loss = loss / self.config.gradient_accumulation_steps
@@ -313,13 +325,20 @@ class Trainer:
 
             # Forward pass
             with autocast(enabled=self.config.mixed_precision):
+                # Pass track_ids if available
+                track_ids = batch.get('track_ids', None)
+
                 logits, _ = self.model(
                     input_ids=batch['input_ids'],
-                    attention_mask=batch['attention_mask']
+                    attention_mask=batch['attention_mask'],
+                    track_ids=track_ids
                 )
 
-                # Compute loss
-                loss = self.loss_fn(logits, batch['labels'])
+                # Compute loss (pass track_ids if using track-aware loss)
+                if self.use_track_aware_loss and track_ids is not None:
+                    loss = self.loss_fn(logits, batch['labels'], track_ids)
+                else:
+                    loss = self.loss_fn(logits, batch['labels'])
 
             # Track metrics
             metrics_tracker.update({
