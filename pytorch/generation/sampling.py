@@ -10,6 +10,13 @@ import torch.nn.functional as F
 from typing import Optional, Tuple
 import logging
 
+from ..data.constants import (
+    TOKEN_RANGES,
+    TRACK_TYPE_MELODY,
+    TRACK_TYPE_CHORD,
+    is_duration_token
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -302,12 +309,112 @@ def get_top_k_tokens(
     return top_k_tokens, top_k_probs
 
 
+def apply_track_constraints(
+    logits: torch.Tensor,
+    track_type: int,
+    mask_value: float = float('-inf')
+) -> torch.Tensor:
+    """
+    Apply track-specific constraints to logits during generation.
+
+    Filters out tokens that violate track-specific rules:
+    - For MELODY tracks: Filter very short durations (potential polyphony indicators)
+    - For CHORD tracks: Filter very short durations (chords should sustain)
+
+    Args:
+        logits: Model output logits, shape [batch_size, vocab_size]
+        track_type: Track type ID (0=MELODY, 1=CHORD)
+        mask_value: Value to assign to masked tokens
+
+    Returns:
+        Filtered logits with constraints applied
+    """
+    filtered_logits = logits.clone()
+
+    # Get duration token range
+    duration_start, duration_end = TOKEN_RANGES['duration']
+
+    # Define short duration tokens (first 3 tokens = durations < 0.5 beats)
+    # Duration tokens: 62-77 (Duration_0.1.4 to Duration_4.0.4)
+    # Short durations: 62-64 (Duration_0.1.4, Duration_0.2.4, Duration_0.3.4)
+    short_duration_tokens = list(range(duration_start, duration_start + 3))
+
+    if track_type == TRACK_TYPE_MELODY:
+        # For melody: penalize very short durations (indicates polyphony)
+        # Mask out the shortest duration tokens
+        for token_id in short_duration_tokens:
+            filtered_logits[:, token_id] = mask_value
+
+        logger.debug(f"Applied MELODY constraints: masked {len(short_duration_tokens)} short duration tokens")
+
+    elif track_type == TRACK_TYPE_CHORD:
+        # For chords: penalize short durations (chords should sustain)
+        # Mask out short duration tokens more aggressively
+        for token_id in short_duration_tokens:
+            filtered_logits[:, token_id] = mask_value
+
+        logger.debug(f"Applied CHORD constraints: masked {len(short_duration_tokens)} short duration tokens")
+
+    return filtered_logits
+
+
+def sample_next_token_track_aware(
+    logits: torch.Tensor,
+    track_type: int,
+    temperature: float = 1.0,
+    top_k: Optional[int] = None,
+    top_p: Optional[float] = None,
+    generated_tokens: Optional[torch.Tensor] = None,
+    repetition_penalty: float = 1.0,
+    deterministic: bool = False,
+    apply_constraints: bool = True
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Sample next token with track-aware constraints.
+
+    Combines standard sampling strategies with track-specific constraints
+    to ensure generated tokens adhere to track rules (melody vs chord).
+
+    Args:
+        logits: Model output logits, shape [batch_size, vocab_size]
+        track_type: Track type ID (0=MELODY, 1=CHORD)
+        temperature: Temperature for scaling (default: 1.0)
+        top_k: Top-k filtering (optional)
+        top_p: Nucleus sampling threshold (optional)
+        generated_tokens: Previously generated tokens for repetition penalty (optional)
+        repetition_penalty: Repetition penalty factor (default: 1.0)
+        deterministic: If True, use argmax instead of sampling
+        apply_constraints: If True, apply track-specific constraints (default: True)
+
+    Returns:
+        Tuple of:
+        - next_token: Sampled token IDs, shape [batch_size, 1]
+        - probs: Token probabilities after all filtering, shape [batch_size, vocab_size]
+    """
+    # Apply track-specific constraints first
+    if apply_constraints:
+        logits = apply_track_constraints(logits, track_type)
+
+    # Then apply standard sampling strategies
+    return sample_next_token(
+        logits=logits,
+        temperature=temperature,
+        top_k=top_k,
+        top_p=top_p,
+        generated_tokens=generated_tokens,
+        repetition_penalty=repetition_penalty,
+        deterministic=deterministic
+    )
+
+
 __all__ = [
     'sample_with_temperature',
     'apply_top_k',
     'apply_top_p',
     'apply_repetition_penalty',
     'sample_next_token',
+    'apply_track_constraints',
+    'sample_next_token_track_aware',
     'compute_token_entropy',
     'compute_perplexity_from_probs',
     'get_top_k_tokens'
