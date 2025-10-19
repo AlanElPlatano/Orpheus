@@ -16,7 +16,13 @@ from .constants import (
     BOS_TOKEN_ID,
     EOS_TOKEN_ID,
     CONTEXT_LENGTH,
-    VOCAB_SIZE
+    VOCAB_SIZE,
+    TRACK_TYPE_MELODY,
+    TRACK_TYPE_CHORD,
+    CORRIDOS_MELODY_PROGRAM,
+    CORRIDOS_CHORD_PROGRAM,
+    TOKEN_RANGES,
+    get_track_type_from_program
 )
 
 
@@ -78,6 +84,67 @@ class MusicTokenDataset(Dataset):
         """Return the number of samples in the dataset."""
         return len(self.file_paths)
 
+    def _generate_track_ids(
+        self,
+        tokens: List[int],
+        tracks_info: List[Dict]
+    ) -> List[int]:
+        """
+        Generate track type IDs for each token in the sequence.
+
+        This function analyzes the token sequence to determine which track
+        (melody or chord) each token belongs to, based on Program tokens.
+
+        Args:
+            tokens: List of token IDs
+            tracks_info: List of track dictionaries from JSON metadata
+
+        Returns:
+            List of track type IDs (0 for melody, 1 for chord)
+        """
+        # Create a mapping from program number to track type
+        program_to_track = {}
+        for track in tracks_info:
+            program = track.get('program', -1)
+            track_type = track.get('type', '').lower()
+
+            if track_type == 'melody':
+                program_to_track[program] = TRACK_TYPE_MELODY
+            elif track_type == 'chord':
+                program_to_track[program] = TRACK_TYPE_CHORD
+            else:
+                # Fallback: use heuristic
+                program_to_track[program] = get_track_type_from_program(program)
+
+        # Program token range
+        program_start, program_end = TOKEN_RANGES['program']
+
+        # Track the current track type (default to melody)
+        current_track_type = TRACK_TYPE_MELODY
+        track_ids = []
+
+        for token in tokens:
+            # Check if this is a Program token
+            if program_start <= token <= program_end:
+                # Extract program number from token
+                # Program tokens are Program_0 to Program_127 and Program_-1
+                # Token IDs: 266-394
+                # Program_0 is 266, Program_127 is 393, Program_-1 is 394
+                if token == 394:  # Program_-1
+                    program_num = -1
+                else:
+                    program_num = token - 266
+
+                # Update current track type based on program
+                current_track_type = program_to_track.get(
+                    program_num,
+                    get_track_type_from_program(program_num)
+                )
+
+            track_ids.append(current_track_type)
+
+        return track_ids
+
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         """
         Get a single item from the dataset.
@@ -90,6 +157,7 @@ class MusicTokenDataset(Dataset):
             - input_ids: Token sequence tensor [seq_len]
             - attention_mask: Attention mask tensor [seq_len]
             - labels: Target labels tensor [seq_len] (shifted input_ids)
+            - track_ids: Track type IDs tensor [seq_len]
             - metadata: Original file metadata (dict)
         """
         # Load JSON file
@@ -97,18 +165,31 @@ class MusicTokenDataset(Dataset):
         with open(file_path, 'r') as f:
             data = json.load(f)
 
-        # Extract token sequence
+        # Extract token sequence and track information
         tokens = data['global_tokens']
+        tracks_info = data.get('tracks', [])
+
+        # Generate track IDs BEFORE adding special tokens
+        track_ids = self._generate_track_ids(tokens, tracks_info)
 
         # Add special tokens
         if self.add_bos:
             tokens = [BOS_TOKEN_ID] + tokens
+            # BOS token gets the track type of the first real token
+            # (or melody as default)
+            first_track = track_ids[0] if track_ids else TRACK_TYPE_MELODY
+            track_ids = [first_track] + track_ids
+
         if self.add_eos:
             tokens = tokens + [EOS_TOKEN_ID]
+            # EOS token gets the track type of the last real token
+            last_track = track_ids[-1] if track_ids else TRACK_TYPE_MELODY
+            track_ids = track_ids + [last_track]
 
         # Truncate if necessary
         if len(tokens) > self.max_length:
             tokens = tokens[:self.max_length]
+            track_ids = track_ids[:self.max_length]
 
         # Create attention mask (1 for real tokens, 0 for padding)
         attention_mask = [1] * len(tokens)
@@ -118,10 +199,13 @@ class MusicTokenDataset(Dataset):
             num_padding = self.max_length - len(tokens)
             tokens = tokens + [PAD_TOKEN_ID] * num_padding
             attention_mask = attention_mask + [0] * num_padding
+            # Padding tokens get a default track type (doesn't matter since they're masked)
+            track_ids = track_ids + [TRACK_TYPE_MELODY] * num_padding
 
         # Convert to tensors
         input_ids = torch.tensor(tokens, dtype=torch.long)
         attention_mask = torch.tensor(attention_mask, dtype=torch.long)
+        track_ids_tensor = torch.tensor(track_ids, dtype=torch.long)
 
         # Create labels for next-token prediction
         # Labels are the input_ids shifted by 1 position
@@ -132,6 +216,7 @@ class MusicTokenDataset(Dataset):
         return {
             'input_ids': input_ids,
             'attention_mask': attention_mask,
+            'track_ids': track_ids_tensor,
             'labels': labels,
             'file_path': str(file_path),
             'metadata': data.get('metadata', {})
@@ -203,12 +288,14 @@ def collate_fn(batch: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
     # Extract fields
     input_ids = [item['input_ids'] for item in batch]
     attention_masks = [item['attention_mask'] for item in batch]
+    track_ids = [item['track_ids'] for item in batch]
     labels = [item['labels'] for item in batch]
 
     # Stack tensors (they should all be the same length if pad_to_max_length=True)
     batched = {
         'input_ids': torch.stack(input_ids),
         'attention_mask': torch.stack(attention_masks),
+        'track_ids': torch.stack(track_ids),
         'labels': torch.stack(labels)
     }
 
