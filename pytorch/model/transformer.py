@@ -18,7 +18,8 @@ from ..data.constants import (
     NUM_HEADS,
     FF_DIM,
     CONTEXT_LENGTH,
-    DROPOUT
+    DROPOUT,
+    NUM_TRACK_TYPES
 )
 
 
@@ -268,7 +269,9 @@ class MusicTransformer(nn.Module):
         num_heads: int = NUM_HEADS,
         ff_dim: int = FF_DIM,
         max_len: int = CONTEXT_LENGTH,
-        dropout: float = DROPOUT
+        dropout: float = DROPOUT,
+        use_track_embeddings: bool = True,
+        num_track_types: int = NUM_TRACK_TYPES
     ):
         """
         Initialize music transformer.
@@ -281,6 +284,8 @@ class MusicTransformer(nn.Module):
             ff_dim: Dimension of feed-forward layer
             max_len: Maximum sequence length
             dropout: Dropout probability
+            use_track_embeddings: Whether to use track type embeddings
+            num_track_types: Number of track types
         """
         super().__init__()
 
@@ -291,9 +296,17 @@ class MusicTransformer(nn.Module):
         self.ff_dim = ff_dim
         self.max_len = max_len
         self.dropout = dropout
+        self.use_track_embeddings = use_track_embeddings
 
-        # Embedding layer (token + positional)
-        self.embedding = MusicEmbedding(vocab_size, hidden_dim, max_len, dropout)
+        # Embedding layer (token + positional + track)
+        self.embedding = MusicEmbedding(
+            vocab_size,
+            hidden_dim,
+            max_len,
+            dropout,
+            use_track_embeddings,
+            num_track_types
+        )
 
         # Transformer blocks
         self.blocks = nn.ModuleList([
@@ -332,6 +345,7 @@ class MusicTransformer(nn.Module):
         self,
         input_ids: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
+        track_ids: Optional[torch.Tensor] = None,
         return_hidden_states: bool = False
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """
@@ -340,6 +354,7 @@ class MusicTransformer(nn.Module):
         Args:
             input_ids: Token IDs, shape [batch_size, seq_len]
             attention_mask: Mask for padding, shape [batch_size, seq_len]
+            track_ids: Track type IDs, shape [batch_size, seq_len] (optional)
             return_hidden_states: Whether to return final hidden states
 
         Returns:
@@ -347,8 +362,8 @@ class MusicTransformer(nn.Module):
             - logits: Output logits, shape [batch_size, seq_len, vocab_size]
             - hidden_states (optional): Final hidden states before LM head
         """
-        # Get embeddings
-        x = self.embedding(input_ids)  # [batch_size, seq_len, hidden_dim]
+        # Get embeddings (with track information if provided)
+        x = self.embedding(input_ids, track_ids)  # [batch_size, seq_len, hidden_dim]
 
         # Apply transformer blocks
         for block in self.blocks:
@@ -464,7 +479,9 @@ def create_model(
     num_heads: int = NUM_HEADS,
     ff_dim: int = FF_DIM,
     max_len: int = CONTEXT_LENGTH,
-    dropout: float = DROPOUT
+    dropout: float = DROPOUT,
+    use_track_embeddings: bool = True,
+    num_track_types: int = NUM_TRACK_TYPES
 ) -> MusicTransformer:
     """
     Factory function to create a MusicTransformer model.
@@ -477,6 +494,8 @@ def create_model(
         ff_dim: Dimension of feed-forward layer
         max_len: Maximum sequence length
         dropout: Dropout probability
+        use_track_embeddings: Whether to use track type embeddings
+        num_track_types: Number of track types
 
     Returns:
         MusicTransformer model
@@ -488,7 +507,9 @@ def create_model(
         num_heads=num_heads,
         ff_dim=ff_dim,
         max_len=max_len,
-        dropout=dropout
+        dropout=dropout,
+        use_track_embeddings=use_track_embeddings,
+        num_track_types=num_track_types
     )
 
 
