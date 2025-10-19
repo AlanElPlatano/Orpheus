@@ -132,6 +132,7 @@ class Trainer:
         metrics_tracker = MetricsTracker()
 
         epoch_start_time = time.time()
+        num_batches = len(self.train_loader)
 
         for batch_idx, batch in enumerate(self.train_loader):
             # Move batch to device
@@ -156,8 +157,14 @@ class Trainer:
             else:
                 loss.backward()
 
-            # Update weights after accumulation steps
-            if (batch_idx + 1) % self.config.gradient_accumulation_steps == 0:
+            # Determine if we should update weights
+            # Update if reached accumulation steps (1) or last batch in epoch (2)
+            is_accumulation_step = (batch_idx + 1) % self.config.gradient_accumulation_steps == 0
+            is_last_batch = (batch_idx + 1) == num_batches
+            should_update = is_accumulation_step or is_last_batch
+
+            # Update weights after accumulation steps or at end of epoch
+            if should_update:
                 # Clip gradients
                 if self.scaler is not None:
                     self.scaler.unscale_(self.optimizer)
@@ -205,42 +212,44 @@ class Trainer:
                 if self.config.do_validation and \
                    self.val_loader is not None and \
                    self.global_step % self.config.validation_interval == 0:
-                    val_metrics = self.validate()
-                    self.logger.log_metrics(
-                        val_metrics,
-                        step=self.global_step,
-                        prefix="val/"
-                    )
-
-                    # Save best model
-                    if val_metrics['loss'] < self.best_val_loss:
-                        self.best_val_loss = val_metrics['loss']
-                        self.patience_counter = 0
-                        save_best_model(
-                            checkpoint_dir=self.config.checkpoint_dir,
-                            model=self.model,
-                            optimizer=self.optimizer,
-                            scheduler=self.scheduler,
-                            epoch=self.current_epoch,
+                    try:
+                        val_metrics = self.validate()
+                        self.logger.log_metrics(
+                            val_metrics,
                             step=self.global_step,
-                            val_loss=self.best_val_loss,
-                            config=self.config.to_dict()
+                            prefix="val/"
                         )
-                        self.logger.log(f"New best model saved! Val loss: {self.best_val_loss:.4f}")
-                    else:
-                        self.patience_counter += 1
 
-                    # Early stopping check
-                    if self.config.early_stopping and \
-                       self.patience_counter >= self.config.early_stopping_patience:
-                        self.logger.log(
-                            f"Early stopping triggered after {self.patience_counter} "
-                            f"validation intervals without improvement"
-                        )
-                        return metrics_tracker.get_averages()
+                        # Save best model
+                        if val_metrics['loss'] < self.best_val_loss:
+                            self.best_val_loss = val_metrics['loss']
+                            self.patience_counter = 0
+                            save_best_model(
+                                checkpoint_dir=self.config.checkpoint_dir,
+                                model=self.model,
+                                optimizer=self.optimizer,
+                                scheduler=self.scheduler,
+                                epoch=self.current_epoch,
+                                step=self.global_step,
+                                val_loss=self.best_val_loss,
+                                config=self.config.to_dict()
+                            )
+                            self.logger.log(f"New best model saved! Val loss: {self.best_val_loss:.4f}")
+                        else:
+                            self.patience_counter += 1
 
-                    # Back to training mode
-                    self.model.train()
+                        # Early stopping check
+                        if self.config.early_stopping and \
+                           self.patience_counter >= self.config.early_stopping_patience:
+                            self.logger.log(
+                                f"Early stopping triggered after {self.patience_counter} "
+                                f"validation intervals without improvement"
+                            )
+                            return metrics_tracker.get_averages()
+
+                    finally:
+                        # Always return to training mode, even if validation fails
+                        self.model.train()
 
                 # Save checkpoint
                 if not self.config.save_best_only and \
