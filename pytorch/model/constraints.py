@@ -33,7 +33,8 @@ class GenerationState:
         self.active_chord_notes: List[int] = []
         self.current_track: Optional[str] = None  # 'melody' or 'chord'
         self.current_key: Optional[int] = None
-        self.current_position: int = 0
+        self.current_bar: int = 0  # Track which bar we're in
+        self.current_position: int = 0  # Absolute position in ticks
 
     def note_on(self, pitch: int, track: str):
         """Register a note-on event."""

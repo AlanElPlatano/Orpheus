@@ -177,16 +177,20 @@ def update_generation_state(
 
     elif vocab_info.is_position_token(token_id):
         # Position token advances time
+        # NOTE: Position tokens are RELATIVE to bar start (0-47), not absolute
         token_name = vocab_info.get_token_name(token_id)
         try:
-            position = int(token_name.split('_')[1])
-            state.current_position = position
+            relative_position = int(token_name.split('_')[1])
+            # Convert to absolute position
+            absolute_position = state.current_bar * 48 + relative_position
+            state.current_position = absolute_position
         except (IndexError, ValueError):
             pass
 
     elif token_id == BAR_TOKEN_ID:
         # Bar token - new measure
-        state.current_position = 0
+        state.current_bar += 1
+        state.current_position = state.current_bar * 48  # Start of new bar
 
 
 # ============================================================================
