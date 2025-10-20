@@ -81,8 +81,8 @@ MAX_DURATION_TICKS = 4.0 * BEAT_RESOLUTION  # 4.0 beats
 # Model Architecture Constants
 # ============================================================================
 
-# From the actual vocabulary extracted from tokenized files
-VOCAB_SIZE = 404  # Total vocabulary size (404 tokens in REMI vocab)
+# From the actual vocabulary extracted from tokenizer
+VOCAB_SIZE = 580  # Total vocabulary size (580 tokens in REMI vocab)
 CONTEXT_LENGTH = 2048  # Maximum sequence length
 HIDDEN_DIM = 512  # Model dimension
 NUM_LAYERS = 8  # Transformer layers
