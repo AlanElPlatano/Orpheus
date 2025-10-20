@@ -7,6 +7,8 @@ workflow including training loop, validation, checkpointing, and logging.
 
 import torch
 import time
+import json
+import logging
 from pathlib import Path
 from typing import Optional, Dict
 from torch.utils.data import DataLoader
@@ -26,6 +28,9 @@ from ..utils.logging_utils import (
     TrainingLogger, MetricsTracker, format_time,
     print_training_header, print_epoch_summary, print_progress
 )
+from ..data.vocab import load_vocabulary, VocabularyInfo
+
+logger = logging.getLogger(__name__)
 
 
 class Trainer:
@@ -117,6 +122,9 @@ class Trainer:
         self.best_val_loss = float('inf')
         self.patience_counter = 0
 
+        # Load vocabulary info and tokenizer config for checkpoint saving
+        self._load_vocab_and_tokenizer_config()
+
         # Log configuration
         self.logger.log_hyperparameters(config.to_dict())
 
@@ -125,6 +133,79 @@ class Trainer:
         print_device_info(self.device)
         if self.device.type == "cuda":
             print_memory_info(self.device)
+
+    def _load_vocab_and_tokenizer_config(self):
+        """Load vocabulary and tokenizer config from data directory for checkpoint saving."""
+        try:
+            # Load vocabulary from processed JSON files
+            logger.info(f"Loading vocabulary from {self.config.data_dir}")
+            self.vocab_info = load_vocabulary(
+                json_dir=self.config.data_dir,
+                verify_consistency=True,
+                num_files_to_check=5
+            )
+            logger.info(f"Loaded vocabulary: {self.vocab_info.vocab_size} tokens")
+
+            # Load tokenizer config from first JSON file
+            json_files = list(self.config.data_dir.glob('*.json'))
+            if json_files:
+                with open(json_files[0], 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    self.tokenizer_config = data.get('tokenizer_config', {})
+                    if self.tokenizer_config:
+                        logger.info(f"Loaded tokenizer config from {json_files[0].name}")
+                    else:
+                        logger.warning("No tokenizer_config found in JSON, using defaults")
+                        self.tokenizer_config = self._get_default_tokenizer_config()
+            else:
+                logger.warning("No JSON files found, using default tokenizer config")
+                self.tokenizer_config = self._get_default_tokenizer_config()
+
+        except Exception as e:
+            logger.error(f"Failed to load vocab/tokenizer config: {e}")
+            # Set to None so checkpoints work but warn user
+            self.vocab_info = None
+            self.tokenizer_config = None
+
+    def _get_default_tokenizer_config(self) -> Dict:
+        """Get default tokenizer configuration."""
+        return {
+            'pitch_range': (36, 84),
+            'beat_resolution': 4,
+            'num_velocities': 8,
+            'additional_tokens': {
+                'Chord': True,
+                'Rest': True,
+                'Tempo': True,
+                'TimeSignature': True
+            }
+        }
+
+    def _get_model_config(self) -> Dict:
+        """Extract model configuration for checkpoint saving."""
+        return {
+            'vocab_size': self.config.vocab_size,
+            'hidden_dim': self.config.hidden_dim,
+            'num_layers': self.config.num_layers,
+            'num_heads': self.config.num_heads,
+            'ff_dim': self.config.ff_dim,
+            'max_len': self.config.context_length,
+            'dropout': self.config.dropout,
+            'use_track_embeddings': self.config.use_track_embeddings,
+            'num_track_types': self.config.num_track_types
+        }
+
+    def _get_extra_state(self) -> Dict:
+        """Get extra state (vocab_info, tokenizer_config) for checkpoint saving."""
+        extra_state = {}
+
+        if self.vocab_info is not None:
+            extra_state['vocab_info'] = self.vocab_info.to_dict()
+
+        if self.tokenizer_config is not None:
+            extra_state['tokenizer_config'] = self.tokenizer_config
+
+        return extra_state
 
     def train_epoch(self) -> Dict[str, float]:
         """
@@ -244,7 +325,9 @@ class Trainer:
                                 epoch=self.current_epoch,
                                 step=self.global_step,
                                 val_loss=self.best_val_loss,
-                                config=self.config.to_dict()
+                                config=self.config.to_dict(),
+                                model_config=self._get_model_config(),
+                                extra_state=self._get_extra_state()
                             )
                             self.logger.log(f"New best model saved! Val loss: {self.best_val_loss:.4f}")
                         else:
@@ -276,7 +359,9 @@ class Trainer:
                         epoch=self.current_epoch,
                         step=self.global_step,
                         best_val_loss=self.best_val_loss,
-                        config=self.config.to_dict()
+                        config=self.config.to_dict(),
+                        model_config=self._get_model_config(),
+                        extra_state=self._get_extra_state()
                     )
 
                     # Cleanup old checkpoints
@@ -411,7 +496,9 @@ class Trainer:
                 epoch=self.current_epoch,
                 step=self.global_step,
                 best_val_loss=self.best_val_loss,
-                config=self.config.to_dict()
+                config=self.config.to_dict(),
+                model_config=self._get_model_config(),
+                extra_state=self._get_extra_state()
             )
 
             training_time = time.time() - training_start_time

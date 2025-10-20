@@ -133,6 +133,46 @@ class VocabularyInfo:
             self.bar_token_id
         }
 
+    def to_dict(self) -> Dict:
+        """
+        Serialize VocabularyInfo to dictionary for checkpoint saving.
+
+        Returns:
+            Dictionary representation of vocabulary info
+        """
+        return {
+            'vocab_size': self.vocab_size,
+            'token_to_id': self.token_to_id,
+            'id_to_token': self.id_to_token,
+            'pad_token_id': self.pad_token_id,
+            'bos_token_id': self.bos_token_id,
+            'eos_token_id': self.eos_token_id,
+            'mask_token_id': self.mask_token_id,
+            'bar_token_id': self.bar_token_id
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> 'VocabularyInfo':
+        """
+        Deserialize VocabularyInfo from dictionary.
+
+        Args:
+            data: Dictionary representation of vocabulary info
+
+        Returns:
+            VocabularyInfo instance
+        """
+        return cls(
+            vocab_size=data['vocab_size'],
+            token_to_id=data['token_to_id'],
+            id_to_token={int(k): v for k, v in data['id_to_token'].items()},  # Convert str keys to int
+            pad_token_id=data['pad_token_id'],
+            bos_token_id=data['bos_token_id'],
+            eos_token_id=data['eos_token_id'],
+            mask_token_id=data['mask_token_id'],
+            bar_token_id=data['bar_token_id']
+        )
+
 
 class VocabularyLoader:
     """

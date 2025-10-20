@@ -114,20 +114,35 @@ class MusicGenerator:
 
             # Load vocabulary
             # Try to load from checkpoint first, fall back to processed directory
-            if 'vocab_info' in checkpoint:
-                self.vocab_info = checkpoint['vocab_info']
-                logger.info("Loaded vocab_info from checkpoint")
+            extra_state = checkpoint.get('extra_state', {})
+
+            if 'vocab_info' in extra_state:
+                # Load from extra_state (new checkpoint format)
+                self.vocab_info = VocabularyInfo.from_dict(extra_state['vocab_info'])
+                logger.info("Loaded vocab_info from checkpoint (extra_state)")
+            elif 'vocab_info' in checkpoint:
+                # Backward compatibility: load from root level (old format)
+                if isinstance(checkpoint['vocab_info'], dict):
+                    self.vocab_info = VocabularyInfo.from_dict(checkpoint['vocab_info'])
+                else:
+                    self.vocab_info = checkpoint['vocab_info']
+                logger.info("Loaded vocab_info from checkpoint (root level)")
             else:
-                logger.info("Loading vocabulary from processed/ directory")
-                from ..data.vocab import load_vocabulary
+                # Fall back to loading from processed directory
+                logger.warning("No vocab_info in checkpoint, loading from processed/ directory")
                 self.vocab_info = load_vocabulary(Path("processed"))
 
             logger.info(f"Vocabulary size: {self.vocab_info.vocab_size}")
 
             # Load tokenizer config (for MIDI export)
-            if 'tokenizer_config' in checkpoint:
+            if 'tokenizer_config' in extra_state:
+                # Load from extra_state (new checkpoint format)
+                self.tokenizer_config = extra_state['tokenizer_config']
+                logger.info("Loaded tokenizer_config from checkpoint (extra_state)")
+            elif 'tokenizer_config' in checkpoint:
+                # Backward compatibility: load from root level (old format)
                 self.tokenizer_config = checkpoint['tokenizer_config']
-                logger.info("Loaded tokenizer_config from checkpoint")
+                logger.info("Loaded tokenizer_config from checkpoint (root level)")
             else:
                 logger.warning("No tokenizer_config in checkpoint, will use defaults for export")
                 self.tokenizer_config = {

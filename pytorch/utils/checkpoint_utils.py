@@ -21,6 +21,7 @@ def save_checkpoint(
     step: int = 0,
     best_val_loss: Optional[float] = None,
     config: Optional[Dict] = None,
+    model_config: Optional[Dict] = None,
     extra_state: Optional[Dict] = None
 ):
     """
@@ -35,7 +36,8 @@ def save_checkpoint(
         step: Current step
         best_val_loss: Best validation loss so far
         config: Training configuration (optional)
-        extra_state: Any additional state to save (optional)
+        model_config: Model architecture configuration (optional)
+        extra_state: Any additional state to save (optional, e.g., vocab_info, tokenizer_config)
     """
     checkpoint = {
         "model_state_dict": model.state_dict(),
@@ -51,6 +53,9 @@ def save_checkpoint(
 
     if config is not None:
         checkpoint["config"] = config
+
+    if model_config is not None:
+        checkpoint["model_config"] = model_config
 
     if extra_state is not None:
         checkpoint["extra_state"] = extra_state
@@ -210,7 +215,9 @@ def save_best_model(
     epoch: int = 0,
     step: int = 0,
     val_loss: float = float('inf'),
-    config: Optional[Dict] = None
+    config: Optional[Dict] = None,
+    model_config: Optional[Dict] = None,
+    extra_state: Optional[Dict] = None
 ):
     """
     Save the best model checkpoint.
@@ -224,6 +231,8 @@ def save_best_model(
         step: Current step
         val_loss: Validation loss (becomes best_val_loss)
         config: Training configuration (optional)
+        model_config: Model architecture configuration (optional)
+        extra_state: Any additional state to save (optional)
     """
     best_path = checkpoint_dir / "best_model.pt"
 
@@ -235,7 +244,9 @@ def save_best_model(
         epoch=epoch,
         step=step,
         best_val_loss=val_loss,
-        config=config
+        config=config,
+        model_config=model_config,
+        extra_state=extra_state
     )
 
 
