@@ -10,3 +10,4 @@ scikit-learn>=1.7.2
 symusic>=0.5.8
 gradio>=5.49.1
 wandb>=0.22.2
+psutil>=5.9.0

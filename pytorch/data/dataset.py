@@ -7,6 +7,7 @@ and returns token sequences ready for training.
 
 import json
 import torch
+import psutil
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from torch.utils.data import Dataset
@@ -253,16 +254,103 @@ class MusicTokenDataset(Dataset):
         }
 
 
+def _estimate_cache_memory_bytes(num_samples: int, max_length: int) -> int:
+    """
+    Estimate memory required to cache dataset in bytes.
+
+    Args:
+        num_samples: Number of samples in dataset
+        max_length: Maximum sequence length
+
+    Returns:
+        Estimated memory in bytes
+    """
+    # Each sample contains 4 tensors (input_ids, attention_mask, labels, track_ids)
+    # Each tensor has max_length elements of int64 (8 bytes each)
+    bytes_per_tensor = max_length * 8
+    bytes_per_sample_tensors = bytes_per_tensor * 4
+
+    # Add overhead for metadata dict and file path string (~1 KB per sample)
+    bytes_per_sample_overhead = 1024
+
+    bytes_per_sample = bytes_per_sample_tensors + bytes_per_sample_overhead
+    total_bytes = num_samples * bytes_per_sample
+
+    return total_bytes
+
+
+def _get_available_memory_bytes() -> Tuple[int, int]:
+    """
+    Get available system memory in bytes.
+
+    Returns:
+        Tuple of (available_bytes, total_bytes)
+    """
+    mem = psutil.virtual_memory()
+    return mem.available, mem.total
+
+
+def _format_bytes(bytes_value: int) -> str:
+    """
+    Format bytes as human-readable string.
+
+    Args:
+        bytes_value: Number of bytes
+
+    Returns:
+        Formatted string (e.g., "1.5 GB")
+    """
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if bytes_value < 1024.0:
+            return f"{bytes_value:.2f} {unit}"
+        bytes_value /= 1024.0
+    return f"{bytes_value:.2f} PB"
+
+
 class CachedMusicTokenDataset(MusicTokenDataset):
     """
     Cached version of MusicTokenDataset that loads all files into memory.
 
     Use this for smaller datasets that fit in RAM for faster training.
+
+    WARNING: This will load all samples into memory. For large datasets,
+    this may cause out-of-memory errors. The initialization will fail
+    if estimated memory usage exceeds 50% of available RAM.
     """
 
     def __init__(self, *args, **kwargs):
-        """Initialize and cache all data in memory."""
+        """
+        Initialize and cache all data in memory.
+
+        Raises:
+            MemoryError: If estimated memory usage exceeds 50% of available RAM
+        """
         super().__init__(*args, **kwargs)
+
+        # Estimate memory requirements
+        estimated_bytes = _estimate_cache_memory_bytes(
+            num_samples=len(self),
+            max_length=self.max_length
+        )
+        available_bytes, total_bytes = _get_available_memory_bytes()
+
+        # Check if estimated usage exceeds 80% of available RAM
+        threshold = available_bytes * 0.8
+        if estimated_bytes > threshold:
+            raise MemoryError(
+                f"Cannot cache dataset - estimated memory usage "
+                f"({_format_bytes(estimated_bytes)}) exceeds 50% of available RAM "
+                f"({_format_bytes(available_bytes)} available out of "
+                f"{_format_bytes(total_bytes)} total).\n"
+                f"Please use MusicTokenDataset instead of CachedMusicTokenDataset, "
+                f"or reduce dataset size."
+            )
+
+        # Log memory usage estimate
+        usage_pct = (estimated_bytes / available_bytes) * 100
+        print(f"Estimated cache memory: {_format_bytes(estimated_bytes)} "
+              f"({usage_pct:.1f}% of available RAM)")
+
         print("Caching dataset in memory...")
         self.cache = [super().__getitem__(idx) for idx in range(len(self))]
         print(f"Cached {len(self.cache)} samples")
