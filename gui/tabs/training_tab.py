@@ -347,7 +347,7 @@ def create_training_tab() -> gr.Tab:
     with gr.Tab("Training") as tab:
 
         gr.Markdown("""
-        ## 🤖 AI Model Training
+        ## AI Model Training
 
         Train your music generation model with real-time monitoring and control.
         """)
@@ -534,7 +534,7 @@ def create_training_tab() -> gr.Tab:
                 )
 
                 # Training logs
-                gr.Markdown("### 📝 Training Logs")
+                gr.Markdown("### Training Logs")
 
                 logs_display = gr.Textbox(
                     label="Recent Logs",

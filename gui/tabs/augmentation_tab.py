@@ -325,7 +325,7 @@ def create_augmentation_tab() -> gr.Tab:
         ### About Data Augmentation
 
         Transposing your dataset to all 12 keys provides several benefits:
-        - **12x Dataset Expansion:** 300 files → 3,600 files
+        - **12x Dataset Expansion:** 1000 files → 12,000 files
         - **Key-Agnostic Learning:** Model learns music theory intrinsically
         - **Better Generalization:** Model can generate in any key
         - **No Manual Labor:** Automatic transposition preserves musical relationships
@@ -335,20 +335,6 @@ def create_augmentation_tab() -> gr.Tab:
         2. Shifts them by the specified number of semitones
         3. Updates the key signature metadata
         4. Saves with a new filename: `original-name-transpose+N.json`
-
-        ---
-        ### 💡 Pro Tip: Influencing the Model
-
-        Want certain songs to have **stronger influence** on the trained model? Simply duplicate your
-        favorite MIDI files in your source midi folder with a different suffix before parsing:
-
-        **Example:**
-        - `my_favorite_song_verse.mid` → Copy to `my_favorite_song_verse_v2.mid`
-        - Parse and transpose both versions
-        - Result: 24 appearances instead of 12 = **2x training influence!**
-
-        This is a simple way to emphasize your best musical examples without complex weighting systems.
-        Just be careful not to overdo it (2-3x max) to avoid overfitting on specific patterns.
         """)
 
         # Event handlers
