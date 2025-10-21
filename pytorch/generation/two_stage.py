@@ -100,7 +100,8 @@ class TwoStageGenerator:
     def generate_complete_sequence(
         self,
         prompt_tokens: Optional[List[int]] = None,
-        seed: Optional[int] = None
+        seed: Optional[int] = None,
+        temperature: Optional[float] = None
     ) -> List[int]:
         """
         Generate a complete music sequence using two-stage generation.
@@ -108,6 +109,7 @@ class TwoStageGenerator:
         Args:
             prompt_tokens: Optional conditioning tokens to start with
             seed: Optional random seed for reproducibility
+            temperature: Optional temperature override (uses config.temperature if None)
 
         Returns:
             List of generated token IDs
@@ -117,15 +119,18 @@ class TwoStageGenerator:
             if torch.cuda.is_available():
                 torch.cuda.manual_seed(seed)
 
+        # Use provided temperature or fall back to config
+        effective_temperature = temperature if temperature is not None else self.config.temperature
+
         # Stage 1: Generate chord progression
         logger.info("Stage 1: Generating chord progression...")
-        chord_tokens = self._generate_chords(prompt_tokens)
+        chord_tokens = self._generate_chords(prompt_tokens, effective_temperature)
 
         logger.info(f"Stage 1 complete: {len(chord_tokens)} chord tokens generated")
 
         # Stage 2: Generate melody conditioned on chords
         logger.info("Stage 2: Generating melody...")
-        full_sequence = self._generate_melody(chord_tokens)
+        full_sequence = self._generate_melody(chord_tokens, effective_temperature)
 
         logger.info(f"Generation complete: {len(full_sequence)} total tokens")
 
@@ -133,7 +138,8 @@ class TwoStageGenerator:
 
     def _generate_chords(
         self,
-        prompt_tokens: Optional[List[int]] = None
+        prompt_tokens: Optional[List[int]] = None,
+        temperature: Optional[float] = None
     ) -> List[int]:
         """
         Generate chord progression (Stage 1).
@@ -143,6 +149,7 @@ class TwoStageGenerator:
 
         Args:
             prompt_tokens: Optional conditioning tokens
+            temperature: Temperature for sampling (uses config if None)
 
         Returns:
             List of chord token IDs
@@ -157,6 +164,9 @@ class TwoStageGenerator:
         state = GenerationState()
         state.current_track = 'chord'
         state.current_key = self.config.key  # For future conditional generation
+
+        # Use provided temperature or fall back to config
+        effective_temperature = temperature if temperature is not None else self.config.temperature
 
         # Convert to tensor
         input_ids = torch.tensor([generated_tokens], dtype=torch.long, device=self.device)
@@ -194,7 +204,7 @@ class TwoStageGenerator:
                     next_token, probs = sample_next_token_track_aware(
                         constrained_logits,
                         track_type=TRACK_TYPE_CHORD,  # Chord track constraints
-                        temperature=self.config.temperature,
+                        temperature=effective_temperature,
                         top_k=self.config.top_k,
                         top_p=self.config.top_p,
                         generated_tokens=input_ids,
@@ -205,7 +215,7 @@ class TwoStageGenerator:
                     # Use standard sampling without track constraints
                     next_token, probs = sample_next_token(
                         constrained_logits,
-                        temperature=self.config.temperature,
+                        temperature=effective_temperature,
                         top_k=self.config.top_k,
                         top_p=self.config.top_p,
                         generated_tokens=input_ids,
@@ -230,7 +240,8 @@ class TwoStageGenerator:
 
     def _generate_melody(
         self,
-        chord_tokens: List[int]
+        chord_tokens: List[int],
+        temperature: Optional[float] = None
     ) -> List[int]:
         """
         Generate melody conditioned on chord progression (Stage 2).
@@ -239,6 +250,7 @@ class TwoStageGenerator:
 
         Args:
             chord_tokens: Generated chord tokens from Stage 1
+            temperature: Temperature for sampling (uses config if None)
 
         Returns:
             Complete sequence with chords and melody
@@ -250,6 +262,9 @@ class TwoStageGenerator:
         state = GenerationState()
         state.current_track = 'melody'
         state.current_key = self.config.key
+
+        # Use provided temperature or fall back to config
+        effective_temperature = temperature if temperature is not None else self.config.temperature
 
         # Convert to tensor
         input_ids = torch.tensor([generated_tokens], dtype=torch.long, device=self.device)
@@ -294,7 +309,7 @@ class TwoStageGenerator:
                     next_token, probs = sample_next_token_track_aware(
                         constrained_logits,
                         track_type=TRACK_TYPE_MELODY,  # Melody track constraints
-                        temperature=self.config.temperature,
+                        temperature=effective_temperature,
                         top_k=self.config.top_k,
                         top_p=self.config.top_p,
                         generated_tokens=input_ids,
@@ -305,7 +320,7 @@ class TwoStageGenerator:
                     # Use standard sampling without track constraints
                     next_token, probs = sample_next_token(
                         constrained_logits,
-                        temperature=self.config.temperature,
+                        temperature=effective_temperature,
                         top_k=self.config.top_k,
                         top_p=self.config.top_p,
                         generated_tokens=input_ids,

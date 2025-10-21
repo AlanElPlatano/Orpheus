@@ -219,6 +219,9 @@ class MusicGenerator:
         else:
             generation_seed = None
 
+        # Use local temperature variable to avoid modifying config across batch generations
+        current_temperature = self.config.temperature
+
         # Attempt generation with retry logic
         for attempt in range(1, self.config.max_retries + 1):
             try:
@@ -227,13 +230,14 @@ class MusicGenerator:
                 # Generate token sequence
                 token_ids = self.two_stage_generator.generate_complete_sequence(
                     prompt_tokens=prompt_tokens,
-                    seed=generation_seed
+                    seed=generation_seed,
+                    temperature=current_temperature
                 )
 
                 result.token_ids = token_ids
                 result.sequence_length = len(token_ids)
                 result.num_attempts = attempt
-                result.temperature_used = self.config.temperature
+                result.temperature_used = current_temperature
 
                 # Count bars
                 from ..data.constants import BAR_TOKEN_ID
@@ -255,7 +259,7 @@ class MusicGenerator:
                         # Retry with lower temperature if configured
                         if attempt < self.config.max_retries:
                             logger.info("Retrying with lower temperature...")
-                            self.config.temperature *= self.config.retry_temperature_decay
+                            current_temperature *= self.config.retry_temperature_decay
                             continue
                 else:
                     result.is_valid = True
@@ -319,7 +323,7 @@ class MusicGenerator:
 
                 if attempt < self.config.max_retries:
                     logger.info("Retrying...")
-                    self.config.temperature *= self.config.retry_temperature_decay
+                    current_temperature *= self.config.retry_temperature_decay
                 else:
                     result.success = False
                     result.error_message = f"All {self.config.max_retries} attempts failed. Last error: {str(e)}"
@@ -370,12 +374,6 @@ class MusicGenerator:
             # Call progress callback if provided
             if progress_callback:
                 progress_callback(i+1, num_files, result)
-
-            # Reset temperature for next generation
-            # (it may have been modified by retry logic)
-            self.config.temperature = (
-                self.config.temperature  # Will be overridden from original config if needed
-            )
 
         # Log batch summary
         successful = sum(1 for r in results if r.success)
