@@ -23,7 +23,9 @@ from ..data.constants import (
     is_pitch_token,
     is_duration_token
 )
+from ..data.vocab import VocabularyInfo
 from ..model.constraints import GenerationState
+from .generation_config import GenerationConfig
 from .sampling import sample_next_token, sample_next_token_track_aware
 from .constrained_decode import (
     update_generation_state,
@@ -46,8 +48,8 @@ class TwoStageGenerator:
     def __init__(
         self,
         model: torch.nn.Module,
-        vocab_info: 'VocabularyInfo',
-        config: 'GenerationConfig',
+        vocab_info: VocabularyInfo,
+        config: GenerationConfig,
         device: str = 'cuda',
         use_track_aware_sampling: bool = True
     ):
@@ -127,6 +129,19 @@ class TwoStageGenerator:
         chord_tokens = self._generate_chords(prompt_tokens, effective_temperature)
 
         logger.info(f"Stage 1 complete: {len(chord_tokens)} chord tokens generated")
+
+        # Check if chord sequence is too long for Stage 2
+        # Reserve space for melody generation (512 tokens for melody)
+        max_chord_context = self.config.max_length - 512
+        if len(chord_tokens) > max_chord_context:
+            original_length = len(chord_tokens)
+            logger.warning(
+                f"Chord sequence too long ({original_length} tokens), "
+                f"truncating to {max_chord_context} tokens to reserve space for melody generation. "
+                f"Keeping most recent {max_chord_context} tokens for harmonic context."
+            )
+            # Keep the beginning of the tokens
+            chord_tokens = chord_tokens[:max_chord_context]
 
         # Stage 2: Generate melody conditioned on chords
         logger.info("Stage 2: Generating melody...")
