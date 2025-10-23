@@ -120,25 +120,34 @@ def process_batch_files(
     )
     
     app_state.results = results
-    
+
     # Calculate statistics
     successful = sum(1 for r in results if r.success)
     failed = len(results) - successful
+
+    # Count truncated files (successful but with truncation warnings)
+    truncated = sum(
+        1 for r in results
+        if r.success and r.warnings and any("exceeds max length" in w for w in r.warnings)
+    )
+    successful_no_warnings = successful - truncated
+
     total_time = sum(r.processing_time for r in results)
-    
+
     total_size_kb = sum(
-        r.output_path.stat().st_size / 1024 
+        r.output_path.stat().st_size / 1024
         for r in results if r.success and r.output_path
     )
-    
+
     compression_info = " (compressed)" if compress else " (uncompressed)"
-    
-    # Build summary
+
+    # Build summary header
     summary = f"""
 ## Batch Processing Complete
 
 **Total Files:** {len(results)}
-**Successful:** {successful} ✅
+**Successful:** {successful_no_warnings} ✅
+**Truncated:** {truncated} ⚠️
 **Failed:** {failed} ❌
 **Total Time:** {total_time:.1f}s
 **Average Time:** {total_time/len(results):.1f}s per file
@@ -148,11 +157,31 @@ def process_batch_files(
 """
     
     for i, (file_path, result) in enumerate(zip(file_paths, results), 1):
-        status_icon = "✅" if result.success else "❌"
+        # Determine if file was truncated
+        has_truncation_warning = False
+        truncation_message = ""
+        if result.success and result.warnings:
+            for warning in result.warnings:
+                if "exceeds max length" in warning:
+                    has_truncation_warning = True
+                    truncation_message = warning
+                    break
+
+        # Set appropriate icon
+        if result.success:
+            status_icon = "⚠️" if has_truncation_warning else "✅"
+        else:
+            status_icon = "❌"
+
         summary += f"\n{i}. {status_icon} **{file_path.name}**"
+
         if result.success:
             file_size = result.output_path.stat().st_size / 1024
             summary += f" → `{result.output_path.name}` ({file_size:.1f} KB, {result.processing_time:.1f}s)"
+
+            # Add truncation warning if present
+            if has_truncation_warning:
+                summary += f" - {truncation_message}"
         else:
             summary += f" → {result.error_message}"
     
