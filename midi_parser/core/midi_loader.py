@@ -13,7 +13,6 @@ import hashlib
 
 import miditoolkit
 from miditoolkit import MidiFile
-import mido
 
 from midi_parser.config.defaults import (
     MidiParserConfig,

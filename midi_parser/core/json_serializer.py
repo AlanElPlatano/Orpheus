@@ -13,7 +13,6 @@ import re
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple, Union
 from dataclasses import dataclass, field
-import hashlib
 from datetime import datetime
 
 from miditoolkit import MidiFile

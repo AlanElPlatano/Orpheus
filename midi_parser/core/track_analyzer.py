@@ -7,7 +7,7 @@ by type (melody, chord, bass, drums), and filtering based on musical characteris
 
 import logging
 import re
-from typing import Dict, List, Optional, Tuple, Set, Any
+from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, field
 from collections import Counter
 import numpy as np

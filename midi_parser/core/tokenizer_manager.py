@@ -7,12 +7,9 @@ suitable for transformer models.
 """
 
 import logging
-from typing import Dict, Any, Optional, List, Tuple, Union, TYPE_CHECKING
+from typing import Dict, Any, Optional, List, Tuple, TYPE_CHECKING
 from dataclasses import dataclass, field
-from pathlib import Path
-from functools import lru_cache
 import json
-import pickle
 import hashlib
 import sys
 
