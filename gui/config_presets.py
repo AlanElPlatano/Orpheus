@@ -53,7 +53,7 @@ def get_simple_mode_config(compress: bool = True) -> MidiParserConfig:
         output=OutputConfig(
             compress_json=compress,
             pretty_print=False,
-            include_vocabulary=False
+            include_vocabulary=True  # Required for data augmentation (transposition)
         )
     )
 
