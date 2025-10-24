@@ -43,7 +43,7 @@ class TrainingConfig:
     # ========================================================================
     # Model settings
     # ========================================================================
-    vocab_size: int = 404
+    vocab_size: int = 531
     hidden_dim: int = 512
     num_layers: int = 8
     num_heads: int = 8

@@ -27,7 +27,7 @@ class TokenEmbedding(nn.Module):
     """
     Token embedding layer that converts token IDs to dense vectors.
 
-    Each of the 404 tokens in our vocabulary gets mapped to a learned
+    Each of the 531 tokens in our vocabulary gets mapped to a learned
     HIDDEN_DIM-dimensional vector.
     """
 
@@ -40,7 +40,7 @@ class TokenEmbedding(nn.Module):
         Initialize token embeddings.
 
         Args:
-            vocab_size: Size of vocabulary (default: 404)
+            vocab_size: Size of vocabulary (default: 531)
             hidden_dim: Dimension of embedding vectors (default: 512)
         """
         super().__init__()
@@ -210,7 +210,7 @@ class MusicEmbedding(nn.Module):
         Initialize music embedding.
 
         Args:
-            vocab_size: Size of vocabulary (default: 404)
+            vocab_size: Size of vocabulary (default: 531)
             hidden_dim: Dimension of embeddings (default: 512)
             max_len: Maximum sequence length (default: 2048)
             dropout: Dropout probability (default: 0.1)
