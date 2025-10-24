@@ -180,6 +180,12 @@ You can select a preset by opening the drop down menu and clicking 'Load Preset'
 
 Unless you selected 'quick_test' this will start a process that will mostly take several hours to finish, for reference, my RTX 3060 took about 12 hours with the production preset and 3000 files.
 
+#### Pause and Resume During Training
+
+If you need to briefly pause training (for example, to free up the GPU for another task), use the **⏸️ Pause** button. This will temporarily halt training while keeping everything in memory. Click **▶️ Resume** to continue from where you left off.
+
+**Important:** The Pause/Resume feature only works within the current session. If you click **🛑 Stop** or close the GUI, you'll need to resume from a checkpoint
+
 ### Checkpoint System
 
 Because this process is very long, i have implemented a checkpoint system:
@@ -188,25 +194,7 @@ Because this process is very long, i have implemented a checkpoint system:
 
 During training, checkpoints are automatically saved **every 2000 steps** (or every 50 steps for quick_test, 1000 for overfit). The system keeps the 5 most recent checkpoints and automatically deletes older ones to save disk space. Each checkpoint contains your model's current state, optimizer settings, and training progress.
 
-Here you will see a dropdown menu with 2 options:
-- **List Checkpoints:** This will read all the written checkpoints in the directory, displaying them in the 'Available Checkpoints' menu below for reference.
-- **Refresh:** If you have already displayed them, you can simply refresh the list with this button.
-
-#### Pause and Resume During Training
-
-If you need to briefly pause training (for example, to free up the GPU for another task), use the **⏸️ Pause** button. This will temporarily halt training while keeping everything in memory. Click **▶️ Resume** to continue from where you left off.
-
-**Important:** The Pause/Resume feature only works within the current session. If you click **🛑 Stop** or close the GUI, you'll need to resume from a checkpoint using the command line:
-
-```bash
-python pytorch/scripts/train.py --resume
-```
-
-Or to resume from a specific checkpoint:
-
-```bash
-python pytorch/scripts/train.py --checkpoint pytorch/checkpoints/checkpoint_step_10000.pt
-```
+In this menu you can find several options, first we have a "Select Checkpoint" menu that lists all the current checkpoints, you can select one from the list and then click "Load Checkpoint", it doesn't show up on the list you can try the "Refresh List" button. Below it you can find a status windows along with another window that lists all the checkpoints in a non-interactive list, along with its own List and Refresh buttons.
 
 Once you finish training, we can move to the next tab.
 

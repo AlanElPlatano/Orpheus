@@ -409,6 +409,100 @@ def list_checkpoints(checkpoint_dir: str) -> str:
         return f"Error listing checkpoints: {str(e)}"
 
 
+def get_checkpoint_dropdown_choices(checkpoint_dir: str) -> list:
+    """
+    Get list of checkpoint names for dropdown.
+
+    Args:
+        checkpoint_dir: Path to checkpoint directory
+
+    Returns:
+        List of checkpoint names
+    """
+    try:
+        checkpoint_path = Path(checkpoint_dir)
+        if not checkpoint_path.exists():
+            return []
+
+        checkpoints = list(checkpoint_path.glob("*.pt"))
+        if not checkpoints:
+            return []
+
+        # Sort by modification time (most recent first)
+        checkpoints.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+
+        return [ckpt.name for ckpt in checkpoints]
+
+    except Exception as e:
+        return []
+
+
+def load_checkpoint_for_training(
+    checkpoint_name: str,
+    checkpoint_dir: str,
+    preset_name: str
+) -> Tuple[str, Dict[str, Any]]:
+    """
+    Load a checkpoint to resume training from it.
+
+    Args:
+        checkpoint_name: Name of checkpoint file
+        checkpoint_dir: Directory containing checkpoints
+        preset_name: Training preset to use as base config
+
+    Returns:
+        Tuple of (status_message, config_updates_dict)
+    """
+    try:
+        if not checkpoint_name:
+            return "⚠️ No checkpoint selected", {}
+
+        checkpoint_path = Path(checkpoint_dir) / checkpoint_name
+
+        if not checkpoint_path.exists():
+            return f"❌ Checkpoint not found: {checkpoint_name}", {}
+
+        # Load configuration from checkpoint
+        import torch
+        checkpoint = torch.load(checkpoint_path, map_location='cpu')
+
+        # Extract training state
+        epoch = checkpoint.get('epoch', 0)
+        step = checkpoint.get('step', 0)
+        best_val_loss = checkpoint.get('best_val_loss', 'N/A')
+
+        # Get config if available
+        config_updates = {}
+        if 'config' in checkpoint:
+            saved_config = checkpoint['config']
+            config_updates = {
+                'batch_size': saved_config.get('batch_size', 8),
+                'learning_rate': saved_config.get('learning_rate', 1e-4),
+                'num_epochs': saved_config.get('num_epochs', 50),
+                'warmup_steps': saved_config.get('warmup_steps', 1000),
+                'gradient_accumulation': saved_config.get('gradient_accumulation_steps', 1),
+                'use_mixed_precision': saved_config.get('mixed_precision', True),
+                'early_stopping': saved_config.get('early_stopping', True),
+                'validation_interval': saved_config.get('validation_interval', 500),
+            }
+
+        status_msg = (
+            f"✅ Checkpoint loaded: {checkpoint_name}\n"
+            f"  • Epoch: {epoch}\n"
+            f"  • Step: {step}\n"
+            f"  • Best Val Loss: {best_val_loss if isinstance(best_val_loss, str) else f'{best_val_loss:.4f}'}\n\n"
+            f"⚠️ To resume training from this checkpoint, you must use the command line:\n"
+            f"python pytorch/scripts/train.py --checkpoint {checkpoint_path}"
+        )
+
+        return status_msg, config_updates
+
+    except Exception as e:
+        import traceback
+        error_msg = f"❌ Error loading checkpoint: {str(e)}\n{traceback.format_exc()}"
+        return error_msg, {}
+
+
 # ============================================================================
 # Gradio Interface
 # ============================================================================
@@ -629,6 +723,27 @@ def create_training_tab() -> gr.Tab:
                         interactive=True
                     )
 
+                    checkpoint_dropdown = gr.Dropdown(
+                        label="Select Checkpoint",
+                        choices=[],
+                        value=None,
+                        info="Choose a checkpoint to load its configuration"
+                    )
+
+                    with gr.Row():
+                        load_checkpoint_btn = gr.Button("Load Checkpoint", size="sm", variant="primary")
+                        refresh_checkpoint_dropdown_btn = gr.Button("🔄 Refresh List", size="sm")
+
+                    checkpoint_load_status = gr.Textbox(
+                        label="Load Status",
+                        value="Select a checkpoint and click 'Load Checkpoint'",
+                        interactive=False,
+                        lines=8
+                    )
+
+                    gr.Markdown("---")
+                    gr.Markdown("**View All Checkpoints**")
+
                     with gr.Row():
                         list_checkpoints_btn = gr.Button("List Checkpoints", size="sm")
                         refresh_checkpoints_btn = gr.Button("🔄 Refresh", size="sm")
@@ -699,6 +814,54 @@ def create_training_tab() -> gr.Tab:
         stop_button.click(
             fn=stop_training,
             outputs=[status_display, training_button]
+        )
+
+        # Refresh checkpoint dropdown
+        def on_refresh_checkpoint_dropdown(checkpoint_dir):
+            choices = get_checkpoint_dropdown_choices(checkpoint_dir)
+            return gr.Dropdown(choices=choices, value=None)
+
+        refresh_checkpoint_dropdown_btn.click(
+            fn=on_refresh_checkpoint_dropdown,
+            inputs=[checkpoint_dir_input],
+            outputs=[checkpoint_dropdown]
+        )
+
+        # Load checkpoint
+        def on_load_checkpoint(checkpoint_name, checkpoint_dir, preset_name):
+            status_msg, config_updates = load_checkpoint_for_training(
+                checkpoint_name, checkpoint_dir, preset_name
+            )
+
+            if config_updates:
+                return [
+                    status_msg,
+                    config_updates['batch_size'],
+                    config_updates['learning_rate'],
+                    config_updates['num_epochs'],
+                    config_updates['warmup_steps'],
+                    config_updates['gradient_accumulation'],
+                    config_updates['use_mixed_precision'],
+                    config_updates['early_stopping'],
+                    config_updates['validation_interval'],
+                ]
+            else:
+                return [status_msg] + [gr.update()] * 8
+
+        load_checkpoint_btn.click(
+            fn=on_load_checkpoint,
+            inputs=[checkpoint_dropdown, checkpoint_dir_input, preset_dropdown],
+            outputs=[
+                checkpoint_load_status,
+                batch_size_slider,
+                learning_rate_input,
+                num_epochs_slider,
+                warmup_steps_slider,
+                gradient_accumulation_slider,
+                use_mixed_precision_checkbox,
+                early_stopping_checkbox,
+                validation_interval_slider,
+            ]
         )
 
         # List checkpoints
