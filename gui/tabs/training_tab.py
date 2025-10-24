@@ -23,11 +23,69 @@ from pytorch.model.transformer import create_model
 from pytorch.data.dataloader import create_dataloaders
 from pytorch.training import GradioTrainer, TrainingMetrics
 from pytorch.utils.checkpoint_utils import get_latest_checkpoint
+from pytorch.data.split import split_dataset, save_split_manifest
 
 
 # ============================================================================
 # Backend Functions
 # ============================================================================
+
+def auto_generate_split_manifest(
+    processed_dir: Path,
+    output_dir: Path,
+    train_ratio: float = 0.8,
+    val_ratio: float = 0.1,
+    test_ratio: float = 0.1,
+    seed: int = 42
+) -> Tuple[bool, str]:
+    """
+    Automatically generate split manifest if it doesn't exist.
+
+    Args:
+        processed_dir: Directory containing processed JSON files
+        output_dir: Directory to save split manifest
+        train_ratio: Training set proportion
+        val_ratio: Validation set proportion
+        test_ratio: Test set proportion
+        seed: Random seed for reproducibility
+
+    Returns:
+        Tuple of (success, message)
+    """
+    try:
+        # Check if processed directory exists and has files
+        if not processed_dir.exists():
+            return False, f"❌ Processed directory not found: {processed_dir}"
+
+        json_files = list(processed_dir.glob("*.json"))
+        if not json_files:
+            return False, f"❌ No JSON files found in {processed_dir}"
+
+        # Create output directory if it doesn't exist
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Perform split
+        train_files, val_files, test_files = split_dataset(
+            processed_dir=processed_dir,
+            train_ratio=train_ratio,
+            val_ratio=val_ratio,
+            test_ratio=test_ratio,
+            seed=seed
+        )
+
+        # Save manifest
+        save_split_manifest(train_files, val_files, test_files, output_dir)
+
+        return True, (
+            f"✅ Auto-generated dataset split:\n"
+            f"  • Training: {len(train_files)} files\n"
+            f"  • Validation: {len(val_files)} files\n"
+            f"  • Test: {len(test_files)} files"
+        )
+
+    except Exception as e:
+        return False, f"❌ Error generating split manifest: {str(e)}"
+
 
 def load_training_config(preset_name: str) -> Tuple[Dict[str, Any], str]:
     """
@@ -82,7 +140,24 @@ def start_training_session(
         # Validate split manifest path
         manifest_path = Path(split_manifest_path)
         if not manifest_path.exists():
-            return f"❌ Split manifest not found: {split_manifest_path}", "Start Training"
+            # Automatically generate split manifest
+            project_root = Path(__file__).parent.parent.parent
+            processed_dir = project_root / 'processed'
+            output_dir = manifest_path.parent
+
+            status_msg = f"📋 Split manifest not found. Generating automatically...\n"
+            success, message = auto_generate_split_manifest(processed_dir, output_dir)
+
+            if not success:
+                return f"{status_msg}\n{message}", "Start Training"
+
+            status_msg += f"{message}\n\n"
+
+            # Verify manifest was created
+            if not manifest_path.exists():
+                return f"{status_msg}❌ Failed to create manifest at {split_manifest_path}", "Start Training"
+        else:
+            status_msg = ""
 
         # Load configuration
         config = get_config_by_name(preset_name)
@@ -146,9 +221,10 @@ def start_training_session(
         )
 
         if success:
-            return "🚀 Training started successfully!", "⏸️ Pause"
+            final_msg = status_msg + "🚀 Training started successfully!"
+            return final_msg, "⏸️ Pause"
         else:
-            return "❌ Failed to start training", "Start Training"
+            return status_msg + "❌ Failed to start training", "Start Training"
 
     except Exception as e:
         import traceback
