@@ -171,7 +171,7 @@ For easier use, a preset menu is provided, where we have 4 options:
 
 - **default:** This is the default training option, in this preset we're making a full run of the training process with modest quality.
 - **quick_test:** This is a preset meant to verify that everything up to this point (data preparation, JSON parsing, etc) has worked correctly. This preset will only train once so you can use it before going to another option to verify everything works correctly.
-- **overfit:** This is a diagnostic preset that purposefully overfits on a small batch. While overfitting is normally undesired, this preset is useful to verify your AI pipeline is working correctly—if the model CAN'T memorize a small batch, something is broken in your code. Use this as a sanity check after making changes or when debugging training issues.
+- **overfit:** This is a diagnostic preset that purposefully overfits on a small batch. While overfitting (memorizing instead of understanding) is normally undesired, this preset is useful to verify your AI pipeline is working correctly, if the model CAN'T memorize a small batch, something is broken in your code. Use this as a sanity check after making changes or when debugging training issues, this a feature for developers and not end users.
 - **production (recommended):** This is the best training preset, it will make a long training process that will take several hours to finish training and will produce a model ready for production. Make sure you have a decent dataset (several thousand files after augmentation) before using this preset
 
 You can select a preset by opening the drop down menu and clicking 'Load Preset', this will replace all the options with the ones from the preset. Once you have everything ready, you can scroll down and click 'Start Training' which will start the process.
@@ -194,7 +194,7 @@ Here you will see a dropdown menu with 2 options:
 
 #### Pause and Resume During Training
 
-If you need to briefly pause training (for example, to free up GPU for another task), use the **⏸️ Pause** button. This will temporarily halt training while keeping everything in memory. Click **▶️ Resume** to continue from where you left off.
+If you need to briefly pause training (for example, to free up the GPU for another task), use the **⏸️ Pause** button. This will temporarily halt training while keeping everything in memory. Click **▶️ Resume** to continue from where you left off.
 
 **Important:** The Pause/Resume feature only works within the current session. If you click **🛑 Stop** or close the GUI, you'll need to resume from a checkpoint using the command line:
 
@@ -223,8 +223,6 @@ We also get generation settings, where we can choose between three modes:
 - **Quality (Conservative)**: Uses Temperature 0.8, Top-p 0.95, Repetition Penalty 1.1. Stays close to training data for predictable, safe outputs.
 - **Creative (Experimental)**: Uses Temperature 1.1, Top-p 0.92, Repetition Penalty 1.05. Produces more varied, experimental outputs with higher randomness.
 - **Custom**: Allows you to manually adjust the sampling parameters to your preference.
-
-**Note:** Currently there's a known issue where the sampling parameter sliders don't visually update when switching modes, but the correct values ARE being used internally during generation. The mode selection works correctly behind the scenes.
 
 Below it we get options for conditional generation, this feature is not implemented yet so it doesn't have an impact on the generated files.
 

@@ -189,14 +189,26 @@ def start_generation(
         return error_msg, pd.DataFrame(), app_state.get_recent_generation_logs()
 
 
-def update_mode_settings(mode: str) -> Tuple[float, float, float, bool, bool, bool]:
+def update_mode_settings(mode: str) -> Tuple[gr.update, gr.update, gr.update]:
     """Update sampling settings based on selected mode."""
     if mode == "Quality (Conservative)":
-        return 0.8, 0.95, 1.1, False, False, False
+        return (
+            gr.update(value=0.8, interactive=False),
+            gr.update(value=0.95, interactive=False),
+            gr.update(value=1.1, interactive=False)
+        )
     elif mode == "Creative (Experimental)":
-        return 1.1, 0.92, 1.05, False, False, False
+        return (
+            gr.update(value=1.1, interactive=False),
+            gr.update(value=0.92, interactive=False),
+            gr.update(value=1.05, interactive=False)
+        )
     else:  # Custom
-        return 0.8, 0.95, 1.1, True, True, True
+        return (
+            gr.update(value=0.8, interactive=True),
+            gr.update(value=0.95, interactive=True),
+            gr.update(value=1.1, interactive=True)
+        )
 
 
 def get_generation_statistics() -> Dict[str, str]:
@@ -445,9 +457,6 @@ def create_generator_tab() -> gr.Tab:
             fn=update_mode_settings,
             inputs=[mode_dropdown],
             outputs=[
-                temperature_slider,
-                top_p_slider,
-                repetition_penalty_slider,
                 temperature_slider,
                 top_p_slider,
                 repetition_penalty_slider
