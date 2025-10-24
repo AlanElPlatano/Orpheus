@@ -120,8 +120,36 @@ def split_dataset(
 
     # Calculate split indices
     num_songs = len(original_ids)
-    train_count = int(num_songs * train_ratio)
-    val_count = int(num_songs * val_ratio)
+
+    # Handle small datasets - ensure at least 1 song per split when possible
+    if num_songs < 3:
+        print(f"\nWARNING: Very small dataset ({num_songs} songs)!")
+        print("    Recommendation: Need at least 3 original songs for proper train/val/test split.")
+        if num_songs == 1:
+            print("    Assigning all files to training set (no validation/test).")
+            train_count = 1
+            val_count = 0
+            test_count = 0
+        elif num_songs == 2:
+            print("    Assigning 1 song to train, 1 song to test (no validation).")
+            train_count = 1
+            val_count = 0
+            test_count = 1
+    else:
+        # Use proportional split, but ensure at least 1 song in each split
+        train_count = max(1, int(num_songs * train_ratio))
+        val_count = max(1, int(num_songs * val_ratio))
+        test_count = num_songs - train_count - val_count
+
+        # If test_count is 0, take one from train (train should be largest)
+        if test_count < 1 and train_count > 1:
+            train_count -= 1
+            test_count = 1
+
+        # Double-check we haven't over-allocated
+        if train_count + val_count + test_count != num_songs:
+            # Adjust test to take any remaining
+            test_count = num_songs - train_count - val_count
 
     # Split original IDs
     train_ids = original_ids[:train_count]
