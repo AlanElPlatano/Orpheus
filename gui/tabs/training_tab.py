@@ -321,6 +321,7 @@ def update_training_progress() -> Dict[str, Any]:
             'logs': "No logs available",
             'loss_plot': None,
             'lr_plot': None,
+            'button_state': "Start Training",
         }
 
     # Get current metrics
@@ -362,9 +363,24 @@ def update_training_progress() -> Dict[str, Any]:
             'Learning Rate': app_state.training_metrics_history['learning_rate'],
         })
 
+    # Determine epoch count display
+    # The trainer config may have num_epochs set, so we try to get it
+    total_epochs = "?"
+    if app_state.trainer and hasattr(app_state.trainer, 'config'):
+        total_epochs = app_state.trainer.config.num_epochs
+
+    # Determine button state based on training status
+    button_state = "Start Training"
+    if metrics.status == "running":
+        button_state = "⏸️ Pause"
+    elif metrics.status == "paused":
+        button_state = "▶️ Resume"
+    elif metrics.status in ["completed", "error", "idle"]:
+        button_state = "Start Training"
+
     return {
         'status_text': f"Status: {metrics.status.upper()} - {metrics.message}",
-        'epoch_text': f"Epoch: {metrics.epoch}/{metrics.total_steps // 100 if metrics.total_steps > 0 else '?'}",
+        'epoch_text': f"Epoch: {metrics.epoch}/{total_epochs}",
         'step_text': f"Step: {metrics.step}/{metrics.total_steps}",
         'loss_text': f"Loss: {metrics.train_loss:.4f}",
         'val_loss_text': f"Val Loss: {metrics.val_loss:.4f}" if metrics.val_loss else "Val Loss: -",
@@ -373,6 +389,7 @@ def update_training_progress() -> Dict[str, Any]:
         'logs': logs if logs else "No logs yet...",
         'loss_plot': loss_plot_data,
         'lr_plot': lr_plot_data,
+        'button_state': button_state,
     }
 
 
@@ -891,6 +908,7 @@ def create_training_tab() -> gr.Tab:
                 updates['logs'],
                 updates['loss_plot'],
                 updates['lr_plot'],
+                updates['button_state'],
             ]
 
         # Manual refresh button
@@ -911,6 +929,7 @@ def create_training_tab() -> gr.Tab:
                 logs_display,
                 loss_plot,
                 lr_plot,
+                training_button,
             ]
         )
 
@@ -929,6 +948,7 @@ def create_training_tab() -> gr.Tab:
                 logs_display,
                 loss_plot,
                 lr_plot,
+                training_button,
             ]
         )
 
@@ -946,6 +966,7 @@ def create_training_tab() -> gr.Tab:
                 logs_display,
                 loss_plot,
                 lr_plot,
+                training_button,
             ]
         )
 
