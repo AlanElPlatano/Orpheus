@@ -8,6 +8,9 @@
 
 *.mid
 *.midi
+*json
+*.pt
+*.log
 
 /venv
 
