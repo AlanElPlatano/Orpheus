@@ -320,23 +320,6 @@ def create_augmentation_tab() -> gr.Tab:
                 with gr.Accordion("Directory Statistics", open=True):
                     stats_display = gr.Markdown(get_directory_stats("./processed"))
 
-        gr.Markdown("""
-        ---
-        ### About Data Augmentation
-
-        Transposing your dataset to all 12 keys provides several benefits:
-        - **12x Dataset Expansion:** 1000 files → 12,000 files
-        - **Key-Agnostic Learning:** Model learns music theory intrinsically
-        - **Better Generalization:** Model can generate in any key
-        - **No Manual Labor:** Automatic transposition preserves musical relationships
-
-        The transposition process:
-        1. Identifies all pitch tokens in the JSON file
-        2. Shifts them by the specified number of semitones
-        3. Updates the key signature metadata
-        4. Saves with a new filename: `original-name-transpose+N.json`
-        """)
-
         # Event handlers
         transpose_btn.click(
             fn=transpose_batch_files,
