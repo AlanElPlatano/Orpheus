@@ -224,7 +224,7 @@ def get_quick_test_config() -> TrainingConfig:
         num_epochs=1,
         max_steps=100,
         batch_size=2,
-        validation_interval=20,
+        validation_interval=50,
         checkpoint_interval=50,
         log_interval=10,
         use_tensorboard=False,
