@@ -12,7 +12,7 @@ import logging
 from pathlib import Path
 from typing import Optional, Dict
 from torch.utils.data import DataLoader
-from torch.cuda.amp import GradScaler, autocast
+from torch.amp import GradScaler, autocast
 
 from ..model.transformer import MusicTransformer
 from ..config.training_config import TrainingConfig
@@ -105,7 +105,7 @@ class Trainer:
         )
 
         # Setup mixed precision training
-        self.scaler = GradScaler() if config.mixed_precision else None
+        self.scaler = GradScaler('cuda') if config.mixed_precision else None
 
         # Setup logging
         self.logger = TrainingLogger(
@@ -225,7 +225,7 @@ class Trainer:
             batch = to_device(batch, self.device)
 
             # Forward pass with optional mixed precision
-            with autocast(enabled=self.config.mixed_precision):
+            with autocast('cuda', enabled=self.config.mixed_precision):
                 # Pass track_ids if available
                 track_ids = batch.get('track_ids', None)
 
@@ -409,7 +409,7 @@ class Trainer:
             batch = to_device(batch, self.device)
 
             # Forward pass
-            with autocast(enabled=self.config.mixed_precision):
+            with autocast('cuda', enabled=self.config.mixed_precision):
                 # Pass track_ids if available
                 track_ids = batch.get('track_ids', None)
 
@@ -465,8 +465,8 @@ class Trainer:
                 # Print epoch summary
                 print_epoch_summary(
                     epoch=epoch + 1,
-                    train_loss=train_metrics['loss'],
-                    val_loss=val_metrics['loss'] if val_metrics else None,
+                    train_loss=train_metrics.get('loss', 0.0),
+                    val_loss=val_metrics.get('loss', 0.0) if val_metrics else None,
                     learning_rate=get_current_lr(self.optimizer),
                     epoch_time=train_metrics.get('epoch_time', 0)
                 )
