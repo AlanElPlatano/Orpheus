@@ -1,6 +1,4 @@
-import warnings
 import pretty_midi
-import miditoolkit
 from typing import Optional
 from .bpm_reader import get_tempo_from_midi
 

@@ -1,5 +1,4 @@
 import pretty_midi
-from typing import Optional
 
 
 def remove_bass_tracks(

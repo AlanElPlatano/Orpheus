@@ -12,7 +12,7 @@ import sys
 import gradio as gr
 import pandas as pd
 from pathlib import Path
-from typing import Optional, Tuple, Dict, Any
+from typing import Tuple, Dict, Any
 
 # Add parent directories to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))

@@ -8,8 +8,6 @@ Supports both single file and batch processing with progress tracking.
 import gradio as gr
 from pathlib import Path
 from typing import Tuple, List
-import json
-import gzip
 
 from midi_parser.interface import ProcessingProgress
 from gui.state import app_state

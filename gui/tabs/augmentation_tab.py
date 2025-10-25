@@ -7,8 +7,7 @@ for data augmentation purposes.
 
 import gradio as gr
 from pathlib import Path
-from typing import Tuple, List
-import json
+from typing import Tuple
 
 from augmentation.transpose_tokenized_json import (
     batch_transpose_directory,
