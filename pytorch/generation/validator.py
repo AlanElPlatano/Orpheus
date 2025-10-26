@@ -97,7 +97,7 @@ class ConstraintValidator:
     Validator for musical constraints in generated sequences.
 
     Checks that generated sequences satisfy the required constraints
-    for the 2-track corridos structure.
+    for the 2-track structure.
     """
 
     def __init__(self, vocab_info: VocabularyInfo):

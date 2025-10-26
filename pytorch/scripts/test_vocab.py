@@ -104,7 +104,7 @@ def test_vocabulary_loading():
         'Duration_1.0.4', # Quarter note
         'Position_0',    # Start of measure
         'Velocity_95',   # Forte
-        'Tempo_123.33',  # Typical corridos tempo (closest to 125 in vocab)
+        'Tempo_123.33',  # Typical tempo (closest to 125 in vocab)
         'TimeSig_6/8',   # Typical corridos time signature
         'Program_29',    # Chord program (guitar)
         'Program_98',    # Melody program (lead)

@@ -287,7 +287,7 @@ def get_track_aware_config() -> TrainingConfig:
     Get configuration for track-aware training.
 
     Uses track-aware loss and embeddings to learn different patterns
-    for melody vs chord tracks. Optimized for corridos music generation.
+    for melody vs chord tracks. Optimized for 2-track music generation.
     """
     return TrainingConfig(
         # Model settings

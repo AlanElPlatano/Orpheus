@@ -188,7 +188,7 @@ SUPPORTED_TIME_SIGNATURES = [
     (5, 4), (6, 4)                     # Complex time
 ]
 
-# Most common for corridos
+# Most common for the developer's dataset
 DEFAULT_TIME_SIGNATURE = (6, 8)
 
 

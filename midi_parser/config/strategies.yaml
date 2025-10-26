@@ -38,7 +38,7 @@ tokenization_strategies:
 # ============================================================================
 
 use_case_presets:
-  # primary use case: 2-track corrido-style demos
+  # primary use case: 2-track demos
   corrido_demo:
     name: "Corrido Demo Structure"
     description: "2-track demos: strict monophonic melody + sustained chords (no rhythm variation)"
