@@ -55,8 +55,6 @@ def validate_simple_mode_structure(track_infos: List) -> Tuple[bool, str]:
 def process_batch_files(
     input_dir: str,
     output_dir: str,
-    mode: str,
-    compress: bool,
     progress=gr.Progress()
 ) -> Tuple[str, str, str]:
     """
@@ -65,13 +63,15 @@ def process_batch_files(
     Args:
         input_dir: Directory containing MIDI files
         output_dir: Output directory for JSON files
-        mode: Processing mode ('simple' or 'advanced')
-        compress: Whether to compress output files
         progress: Gradio progress tracker
 
     Returns:
         Tuple of (status, summary, logs)
     """
+    # Always use simple and uncompressed mode, 
+    mode = "simple"
+    compress = False
+    
     if not input_dir:
         return "❌ No input directory selected", "", ""
 
@@ -137,8 +137,6 @@ def process_batch_files(
         for r in results if r.success and r.output_path
     )
 
-    compression_info = " (compressed)" if compress else " (uncompressed)"
-
     # Build summary header
     summary = f"""
 ## Batch Processing Complete
@@ -149,7 +147,7 @@ def process_batch_files(
 **Failed:** {failed} ❌
 **Total Time:** {total_time:.1f}s
 **Average Time:** {total_time/len(results):.1f}s per file
-**Total Output Size:** {total_size_kb:.1f} KB{compression_info}
+**Total Output Size:** {total_size_kb:.1f} KB
 
 ### Results:
 """
@@ -221,16 +219,6 @@ def create_parser_tab() -> gr.Tab:
         with gr.Row():
             # Left column - Configuration and controls
             with gr.Column(scale=1):
-                mode_parser = gr.Radio(
-                    choices=[
-                        ("Simple Mode", "simple"),
-                        ("Advanced Mode", "advanced")
-                    ],
-                    value="simple",
-                    label="Mode",
-                    info="Simple mode for melody+chord, Advanced for any MIDI"
-                )
-
                 input_dir_parser = gr.Textbox(
                     label="Input Directory",
                     value="./source_midis",
@@ -241,15 +229,6 @@ def create_parser_tab() -> gr.Tab:
                     label="Output Directory",
                     value="./processed",
                     placeholder="Path where JSON files will be saved"
-                )
-
-                compress_json = gr.Checkbox(
-                    label="Compress JSON output (.json.gz)",
-                    value=False,
-                    info="""🔵 Compressed (.json.gz): 5-10x smaller files, great for storage
-🟢 Uncompressed (.json): Faster PyTorch DataLoader reads, better for training
-
-For AI training: Uncompressed is recommended as it eliminates decompression overhead during repeated DataLoader reads across epochs. Compressed is better if disk space is limited."""
                 )
 
                 with gr.Row():
@@ -283,7 +262,7 @@ For AI training: Uncompressed is recommended as it eliminates decompression over
         # Event handlers
         process_parser_btn.click(
             fn=process_batch_files,
-            inputs=[input_dir_parser, output_dir_parser, mode_parser, compress_json],
+            inputs=[input_dir_parser, output_dir_parser],
             outputs=[status_parser, summary_parser, logs_parser]
         )
 
