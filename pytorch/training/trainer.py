@@ -9,6 +9,7 @@ import torch
 import time
 import json
 import logging
+import gc
 from pathlib import Path
 from typing import Optional, Dict
 from torch.utils.data import DataLoader
@@ -283,10 +284,15 @@ class Trainer:
                 # Update global step
                 self.global_step += 1
 
-                # Track metrics
+                # Periodic memory cleanup to prevent accumulation
+                if self.global_step % 100 == 0 and self.device.type == "cuda":
+                    torch.cuda.empty_cache()
+                    gc.collect()
+
+                # Track metrics (ensure all values are detached scalars)
                 metrics_tracker.update({
                     'loss': loss.item() * self.config.gradient_accumulation_steps,
-                    'perplexity': compute_perplexity(loss).item(),
+                    'perplexity': compute_perplexity(loss.detach()).item(),
                     'grad_norm': grad_norm,
                     'learning_rate': get_current_lr(self.optimizer)
                 })
@@ -345,6 +351,9 @@ class Trainer:
                     finally:
                         # Always return to training mode, even if validation fails
                         self.model.train()
+                        # Clear CUDA cache after validation to free memory
+                        if self.device.type == "cuda":
+                            torch.cuda.empty_cache()
 
                 # Save checkpoint
                 if not self.config.save_best_only and \
@@ -425,10 +434,10 @@ class Trainer:
                 else:
                     loss = self.loss_fn(logits, batch['labels'])
 
-            # Track metrics
+            # Track metrics (ensure all values are detached scalars)
             metrics_tracker.update({
                 'loss': loss.item(),
-                'perplexity': compute_perplexity(loss).item()
+                'perplexity': compute_perplexity(loss.detach()).item()
             })
 
         return metrics_tracker.get_averages()
@@ -539,6 +548,50 @@ class Trainer:
         self.best_val_loss = metadata.get('best_val_loss', float('inf'))
 
         self.logger.log(f"Resumed from epoch {self.current_epoch}, step {self.global_step}")
+
+    def cleanup(self):
+        """
+        Clean up GPU memory and resources.
+
+        Call this method before destroying the trainer to properly release GPU memory.
+        """
+        try:
+            # Move model to CPU to free GPU memory
+            if hasattr(self, 'model') and self.model is not None:
+                self.model.cpu()
+                del self.model
+                self.model = None
+
+            # Delete optimizer
+            if hasattr(self, 'optimizer') and self.optimizer is not None:
+                del self.optimizer
+                self.optimizer = None
+
+            # Delete scheduler
+            if hasattr(self, 'scheduler') and self.scheduler is not None:
+                del self.scheduler
+                self.scheduler = None
+
+            # Delete scaler
+            if hasattr(self, 'scaler') and self.scaler is not None:
+                del self.scaler
+                self.scaler = None
+
+            # Clear data loader references
+            if hasattr(self, 'train_loader'):
+                self.train_loader = None
+            if hasattr(self, 'val_loader'):
+                self.val_loader = None
+
+            # Clear CUDA cache
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+
+            logger.info("Trainer cleanup completed - GPU memory released")
+
+        except Exception as e:
+            logger.error(f"Error during trainer cleanup: {e}")
 
 
 __all__ = ['Trainer']

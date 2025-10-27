@@ -100,6 +100,14 @@ class AppState:
         Args:
             trainer: GradioTrainer instance
         """
+        # Clean up old trainer before replacing
+        if self.trainer is not None:
+            try:
+                if hasattr(self.trainer, 'cleanup'):
+                    self.trainer.cleanup()
+            except Exception as e:
+                print(f"Error cleaning up old trainer: {e}")
+
         self.trainer = trainer
         self.training_active = True
         self.training_logs.clear()
@@ -148,7 +156,15 @@ class AppState:
         return "\n".join(self.training_logs[-count:])
 
     def clear_training_state(self) -> None:
-        """Clear training state."""
+        """Clear training state and release GPU memory."""
+        # Clean up trainer before clearing
+        if self.trainer is not None:
+            try:
+                if hasattr(self.trainer, 'cleanup'):
+                    self.trainer.cleanup()
+            except Exception as e:
+                print(f"Error cleaning up trainer: {e}")
+
         self.trainer = None
         self.training_active = False
         self.training_logs.clear()

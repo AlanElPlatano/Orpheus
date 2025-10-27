@@ -178,6 +178,16 @@ def start_training_session(
         if app_state.trainer is not None and app_state.trainer.is_running():
             return "⚠️ Training is already running", "Start Training"
 
+        # Clean up any existing trainer before creating new one
+        if app_state.trainer is not None:
+            try:
+                app_state.clear_training_state()
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except Exception as e:
+                return f"❌ Error cleaning up previous training session: {str(e)}", "Start Training"
+
         # Setup model-specific paths
         project_root = Path(__file__).parent.parent.parent
         processed_dir = project_root / 'processed'
@@ -600,9 +610,9 @@ def create_training_tab() -> gr.Tab:
                 # Preset selector
                 preset_dropdown = gr.Dropdown(
                     label="Training Preset",
-                    choices=["default", "quick_test", "overfit", "production"],
+                    choices=["default", "quick_test", "overfit", "production", "low_memory"],
                     value="default",
-                    info="Select a preset configuration"
+                    info="Select a preset configuration (use 'low_memory' for 4GB VRAM or less)"
                 )
 
                 load_preset_btn = gr.Button("Load Preset", size="sm")

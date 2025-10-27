@@ -384,5 +384,58 @@ class GradioTrainer:
             except Exception as e:
                 print(f"Error in log callback: {e}")
 
+    def cleanup(self):
+        """
+        Clean up GPU memory and resources.
+
+        Call this method before destroying the GradioTrainer to properly release GPU memory.
+        """
+        try:
+            # Stop training if running
+            if self._running.is_set():
+                self._stop_flag.set()
+                if self.training_thread is not None:
+                    self.training_thread.join(timeout=5.0)
+
+            # Clean up trainer
+            if self.trainer is not None:
+                self.trainer.cleanup()
+                self.trainer = None
+
+            # Move model to CPU and delete
+            if hasattr(self, 'model') and self.model is not None:
+                self.model.cpu()
+                del self.model
+                self.model = None
+
+            # Clear data loader references
+            if hasattr(self, 'train_loader'):
+                self.train_loader = None
+            if hasattr(self, 'val_loader'):
+                self.val_loader = None
+
+            # Clear queues
+            try:
+                while not self.metrics_queue.empty():
+                    self.metrics_queue.get_nowait()
+            except:
+                pass
+
+            try:
+                while not self.log_queue.empty():
+                    self.log_queue.get_nowait()
+            except:
+                pass
+
+            # Clear CUDA cache
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+
+            self._log("GradioTrainer cleanup completed - GPU memory released", "INFO")
+
+        except Exception as e:
+            self._log(f"Error during GradioTrainer cleanup: {e}", "ERROR")
+
 
 __all__ = ['GradioTrainer', 'TrainingMetrics']

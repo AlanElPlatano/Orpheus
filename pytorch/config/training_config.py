@@ -325,12 +325,66 @@ def get_track_aware_config() -> TrainingConfig:
     )
 
 
+def get_low_memory_config() -> TrainingConfig:
+    """
+    Get configuration optimized for low VRAM systems (4GB or less).
+
+    Key optimizations:
+    - Reduced batch size (1)
+    - Shorter context length (512 instead of 2048)
+    - Smaller model dimensions
+    - Gradient accumulation to simulate larger batches
+    - Mixed precision enabled
+
+    Useful for:
+    - Training on laptops with integrated or low-end GPUs
+    - Development on memory-constrained systems
+    """
+    return TrainingConfig(
+        # Model settings - smaller to fit in memory
+        hidden_dim=256,           # Reduced from 512
+        num_layers=4,             # Reduced from 8
+        num_heads=4,              # Reduced from 8
+        ff_dim=1024,              # Reduced from 2048
+        context_length=512,       # Reduced from 2048 (4x smaller!)
+        dropout=0.1,
+
+        # Training settings
+        batch_size=1,             # Minimal batch size
+        gradient_accumulation_steps=8,  # Simulate batch_size=8
+        num_epochs=50,
+        learning_rate=1e-4,
+        warmup_steps=500,
+
+        # Validation and logging
+        validation_interval=200,  # Less frequent validation to save memory
+        checkpoint_interval=1000,
+        log_interval=50,
+
+        # Memory optimization
+        mixed_precision=True,     # Essential for memory savings
+        num_workers=0,            # No multiprocessing overhead
+        use_cache=False,          # Don't cache dataset in memory
+
+        # Logging
+        use_tensorboard=True,
+        use_wandb=False,
+
+        # Early stopping
+        early_stopping=True,
+        early_stopping_patience=10,
+
+        # Checkpointing
+        max_checkpoints_to_keep=3  # Save disk space
+    )
+
+
 def get_config_by_name(name: str) -> TrainingConfig:
     """
     Get configuration by preset name.
 
     Args:
-        name: One of "default", "quick_test", "overfit", "production", "track_aware"
+        name: One of "default", "quick_test", "overfit", "production", "track_aware", "low_memory"
 
     Returns:
         TrainingConfig instance
@@ -340,7 +394,8 @@ def get_config_by_name(name: str) -> TrainingConfig:
         "quick_test": get_quick_test_config,
         "overfit": get_overfit_config,
         "production": get_production_config,
-        "track_aware": get_track_aware_config
+        "track_aware": get_track_aware_config,
+        "low_memory": get_low_memory_config
     }
 
     if name not in configs:
@@ -359,5 +414,6 @@ __all__ = [
     'get_overfit_config',
     'get_production_config',
     'get_track_aware_config',
+    'get_low_memory_config',
     'get_config_by_name'
 ]
