@@ -131,8 +131,19 @@ class TwoStageGenerator:
         logger.info(f"Stage 1 complete: {len(chord_tokens)} chord tokens generated")
 
         # Check if chord sequence is too long for Stage 2
-        # Reserve space for melody generation (512 tokens for melody)
-        max_chord_context = self.config.max_length - 512
+        # Reserve space for melody generation (25% of context length)
+        # For default 2048 context: 512 tokens (original behavior)
+        # For low_memory 512 context: 128 tokens (scaled appropriately)
+        melody_reservation = max(int(self.config.max_length * 0.25), 64)
+        max_chord_context = self.config.max_length - melody_reservation
+
+        # Sanity check: ensure we have at least some space for chords
+        if max_chord_context < 32:
+            raise ValueError(
+                f"Context length ({self.config.max_length}) is too small for two-stage generation. "
+                f"Need at least {melody_reservation + 32} tokens."
+            )
+
         if len(chord_tokens) > max_chord_context:
             original_length = len(chord_tokens)
             logger.warning(

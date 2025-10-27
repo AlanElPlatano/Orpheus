@@ -112,6 +112,16 @@ class MusicGenerator:
 
             logger.info(f"Model loaded: {self.model.get_num_params() / 1e6:.1f}M parameters")
 
+            # Update generation config to match model's max_len
+            # This is critical for models trained with different context lengths
+            # (e.g., low_memory preset uses 512 instead of default 2048)
+            if model_config['max_len'] != self.config.max_length:
+                logger.warning(
+                    f"Adjusting generation max_length from {self.config.max_length} "
+                    f"to {model_config['max_len']} to match model's trained context length"
+                )
+                self.config.max_length = model_config['max_len']
+
             # Load vocabulary
             # Try to load from checkpoint first, fall back to processed directory
             extra_state = checkpoint.get('extra_state', {})

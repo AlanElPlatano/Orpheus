@@ -213,14 +213,10 @@ def update_mode_settings(mode: str) -> Tuple[gr.update, gr.update, gr.update]:
         )
 
 
-def get_generation_statistics() -> Dict[str, str]:
+def get_generation_statistics() -> Tuple[str, str, str]:
     """Get generation statistics from current session."""
     if not app_state.generation_results:
-        return {
-            'success_rate': "N/A",
-            'avg_time': "N/A",
-            'total_violations': "N/A"
-        }
+        return "N/A", "N/A", "N/A"
 
     successful = sum(1 for r in app_state.generation_results if r['success'])
     total = len(app_state.generation_results)
@@ -231,11 +227,11 @@ def get_generation_statistics() -> Dict[str, str]:
 
     total_violations = sum(r['violations'] for r in app_state.generation_results)
 
-    return {
-        'success_rate': f"{success_rate:.1f}%",
-        'avg_time': f"{avg_time:.1f}s",
-        'total_violations': str(total_violations)
-    }
+    return (
+        f"{success_rate:.1f}%",
+        f"{avg_time:.1f}s",
+        str(total_violations)
+    )
 
 
 # ============================================================================
