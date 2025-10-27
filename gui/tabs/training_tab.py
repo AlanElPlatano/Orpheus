@@ -30,6 +30,40 @@ from pytorch.data.split import split_dataset, save_split_manifest
 # Backend Functions
 # ============================================================================
 
+def validate_model_name(model_name: str) -> Tuple[bool, str]:
+    """
+    Validate model name for filesystem compatibility.
+
+    Args:
+        model_name: Proposed model name
+
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    import re
+
+    if not model_name or model_name.strip() == "":
+        return False, "Model name cannot be empty"
+
+    model_name = model_name.strip()
+
+    # Only allow alphanumeric, underscores, and hyphens
+    if not re.match(r'^[a-zA-Z0-9_-]+$', model_name):
+        return False, "Model name can only contain letters, numbers, underscores, and hyphens"
+
+    # Check length (reasonable filesystem limits)
+    if len(model_name) > 100:
+        return False, "Model name is too long (max 100 characters)"
+
+    # Avoid reserved names
+    reserved_names = ['con', 'prn', 'aux', 'nul', 'com1', 'com2', 'com3', 'com4',
+                     'lpt1', 'lpt2', 'lpt3']
+    if model_name.lower() in reserved_names:
+        return False, f"'{model_name}' is a reserved name"
+
+    return True, ""
+
+
 def auto_generate_split_manifest(
     processed_dir: Path,
     output_dir: Path,
@@ -115,8 +149,8 @@ def load_training_config(preset_name: str) -> Tuple[Dict[str, Any], str]:
 
 
 def start_training_session(
+    model_name: str,
     preset_name: str,
-    split_manifest_path: str,
     batch_size: int,
     learning_rate: float,
     num_epochs: int,
@@ -133,31 +167,40 @@ def start_training_session(
         Tuple of (status_message, button_state)
     """
     try:
+        # Validate model name
+        is_valid, error_msg = validate_model_name(model_name)
+        if not is_valid:
+            return f"❌ Invalid model name: {error_msg}", "Start Training"
+
+        model_name = model_name.strip()
+
         # Check if training is already running
         if app_state.trainer is not None and app_state.trainer.is_running():
             return "⚠️ Training is already running", "Start Training"
 
-        # Validate split manifest path
-        manifest_path = Path(split_manifest_path)
+        # Setup model-specific paths
+        project_root = Path(__file__).parent.parent.parent
+        processed_dir = project_root / 'processed'
+
+        # Model-specific split directory
+        split_dir = project_root / 'pytorch' / 'data' / 'splits' / model_name
+        manifest_path = split_dir / 'split_manifest.json'
+
+        # Model-specific checkpoint directory
+        checkpoint_dir = project_root / 'pytorch' / 'checkpoints' / model_name
+
+        # Always regenerate split manifest on training start
+        status_msg = f"📋 Generating dataset split for model '{model_name}'...\n"
+        success, message = auto_generate_split_manifest(processed_dir, split_dir)
+
+        if not success:
+            return f"{status_msg}\n{message}", "Start Training"
+
+        status_msg += f"{message}\n\n"
+
+        # Verify manifest was created
         if not manifest_path.exists():
-            # Automatically generate split manifest
-            project_root = Path(__file__).parent.parent.parent
-            processed_dir = project_root / 'processed'
-            output_dir = manifest_path.parent
-
-            status_msg = f"📋 Split manifest not found. Generating automatically...\n"
-            success, message = auto_generate_split_manifest(processed_dir, output_dir)
-
-            if not success:
-                return f"{status_msg}\n{message}", "Start Training"
-
-            status_msg += f"{message}\n\n"
-
-            # Verify manifest was created
-            if not manifest_path.exists():
-                return f"{status_msg}❌ Failed to create manifest at {split_manifest_path}", "Start Training"
-        else:
-            status_msg = ""
+            return f"{status_msg}❌ Failed to create manifest at {manifest_path}", "Start Training"
 
         # Load configuration
         config = get_config_by_name(preset_name)
@@ -172,6 +215,7 @@ def start_training_session(
         config.early_stopping = early_stopping
         config.validation_interval = validation_interval
         config.split_manifest_path = manifest_path
+        config.checkpoint_dir = checkpoint_dir
 
         # Create data loaders
         train_loader, val_loader, test_loader = create_dataloaders(
@@ -281,19 +325,20 @@ def stop_training() -> Tuple[str, str]:
         return "⚠️ Could not stop training", "⏸️ Pause"
 
 
-def handle_training_button(button_text: str, *config_args) -> Tuple[str, str]:
+def handle_training_button(button_text: str, model_name: str, *config_args) -> Tuple[str, str]:
     """
     Handle training button click based on current state.
 
     Args:
         button_text: Current button text
+        model_name: Name of the model to train
         *config_args: Configuration arguments
 
     Returns:
         Tuple of (status_message, new_button_text)
     """
     if button_text == "Start Training":
-        return start_training_session(*config_args)
+        return start_training_session(model_name, *config_args)
     elif button_text == "⏸️ Pause":
         return pause_training()
     elif button_text == "▶️ Resume":
@@ -544,6 +589,14 @@ def create_training_tab() -> gr.Tab:
             with gr.Column(scale=1):
                 gr.Markdown("### ⚙️ Configuration")
 
+                # Model name input
+                model_name_input = gr.Textbox(
+                    label="Model Name",
+                    value="model_1",
+                    info="Name for this model (used for checkpoints and splits)",
+                    placeholder="e.g., model_1, baseline_v2, experimental-lstm"
+                )
+
                 # Preset selector
                 preset_dropdown = gr.Dropdown(
                     label="Training Preset",
@@ -559,14 +612,6 @@ def create_training_tab() -> gr.Tab:
                     value="Select a preset and click 'Load Preset'",
                     interactive=False,
                     lines=2
-                )
-
-                gr.Markdown("### 📁 Dataset")
-
-                split_manifest_input = gr.Textbox(
-                    label="Split Manifest Path",
-                    value="pytorch/data/splits/split_manifest.json",
-                    info="Path to train/val/test split manifest"
                 )
 
                 gr.Markdown("### 🎛️ Hyperparameters")
@@ -813,8 +858,8 @@ def create_training_tab() -> gr.Tab:
             fn=handle_training_button,
             inputs=[
                 training_button,  # Current button text
+                model_name_input,  # Model name
                 preset_dropdown,
-                split_manifest_input,
                 batch_size_slider,
                 learning_rate_input,
                 num_epochs_slider,
