@@ -37,16 +37,18 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 def list_available_checkpoints(checkpoint_dir: str = "pytorch/checkpoints") -> List[str]:
-    """List available model checkpoints."""
+    """List available model checkpoints, including those in subfolders."""
     try:
         checkpoint_path = Path(checkpoint_dir)
         if not checkpoint_path.exists():
             return []
 
-        checkpoints = list(checkpoint_path.glob("*.pt"))
+        # Recursively search for .pt files in subdirectories
+        checkpoints = list(checkpoint_path.glob("**/*.pt"))
         checkpoints.sort(key=lambda p: p.stat().st_mtime, reverse=True)
 
-        return [str(ckpt.name) for ckpt in checkpoints]
+        # Return relative paths from the checkpoint_dir
+        return [str(ckpt.relative_to(checkpoint_path)) for ckpt in checkpoints]
 
     except Exception as e:
         logger.error(f"Error listing checkpoints: {e}")

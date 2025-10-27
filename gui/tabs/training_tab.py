@@ -593,7 +593,7 @@ def create_training_tab() -> gr.Tab:
                 model_name_input = gr.Textbox(
                     label="Model Name",
                     value="model_1",
-                    info="Name for this model (used for checkpoints and splits)",
+                    info="Name for this model",
                     placeholder="e.g., model_1, baseline_v2, experimental-lstm"
                 )
 
