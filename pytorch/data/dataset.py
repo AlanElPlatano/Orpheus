@@ -209,9 +209,11 @@ class MusicTokenDataset(Dataset):
         track_ids_tensor = torch.tensor(track_ids, dtype=torch.long)
 
         # Create labels for next-token prediction
-        # Labels are the input_ids shifted by 1 position
-        # We set padding positions to -100 (ignored by PyTorch loss functions)
+        # Labels should be input_ids shifted left by 1 (predict the next token)
+        # For input [BOS, t1, t2, t3], labels should be [t1, t2, t3, EOS]
         labels = input_ids.clone()
+        labels[:-1] = input_ids[1:]  # Shift left: copy positions 1-end to 0-end-1
+        labels[-1] = -100  # Last position has no next token to predict
         labels[attention_mask == 0] = -100  # Ignore padding in loss calculation
 
         return {
