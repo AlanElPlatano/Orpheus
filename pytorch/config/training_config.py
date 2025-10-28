@@ -104,7 +104,7 @@ class TrainingConfig:
     log_dir: Path = Path("pytorch/logs")
     use_tensorboard: bool = True
     use_wandb: bool = False  # Weights & Biases integration
-    wandb_project: Optional[str] = "corridos-music-generation"
+    wandb_project: Optional[str] = "Orpheus"
     wandb_run_name: Optional[str] = None
 
     # ========================================================================
