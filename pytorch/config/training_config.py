@@ -368,7 +368,7 @@ def get_low_memory_config() -> TrainingConfig:
 
         # Logging
         use_tensorboard=True,
-        use_wandb=False,
+        use_wandb=True,
 
         # Early stopping
         early_stopping=True,
@@ -378,13 +378,70 @@ def get_low_memory_config() -> TrainingConfig:
         max_checkpoints_to_keep=3  # Save disk space
     )
 
+def get_optimized_default_config() -> TrainingConfig:
+    """
+    Balanced config that should work well without requiring much VRAM.
+    
+    Uses gradient accumulation to maintain effective batch size while
+    keeping memory footprint low. Maintains default architecture to
+    ensure training quality.
+    
+    Key features:
+    - Full-size architecture (512 hidden dim, 8 layers)
+    - Small batch size (2) with gradient accumulation (2x) = effective batch of 4
+    - Mixed precision for memory efficiency
+    - Suitable for GPUs with 6-8GB VRAM
+    
+    Useful for:
+    - Mid-range GPUs (GTX 1060/1070, RTX 2060, etc.)
+    - Training with quality comparable to default config
+    - Development on memory-constrained systems
+    """
+    return TrainingConfig(
+        # Default architecture - full quality
+        hidden_dim=512,
+        num_layers=8,
+        num_heads=8,
+        ff_dim=2048,
+        context_length=2048,
+        dropout=0.1,
+        
+        # Training - smaller batch, use accumulation
+        batch_size=2,  # Reduced for memory
+        gradient_accumulation_steps=2,  # Effective batch = 4
+        num_epochs=50,
+        learning_rate=1e-4,
+        warmup_steps=1000,
+        
+        # Memory optimization
+        mixed_precision=True,  # Essential for memory savings
+        num_workers=0,  # Avoid multiprocessing overhead
+        use_cache=False,  # Don't cache dataset in memory
+        
+        # Validation and logging
+        validation_interval=500,
+        checkpoint_interval=2000,
+        log_interval=100,
+        
+        # Logging
+        use_tensorboard=True,
+        use_wandb=False,
+        
+        # Early stopping
+        early_stopping=True,
+        early_stopping_patience=10,
+        
+        # Checkpointing
+        max_checkpoints_to_keep=5
+    )
 
 def get_config_by_name(name: str) -> TrainingConfig:
     """
     Get configuration by preset name.
 
     Args:
-        name: One of "default", "quick_test", "overfit", "production", "track_aware", "low_memory"
+        name: One of "default", "quick_test", "overfit", "production", 
+              "track_aware", "optimized_default", "low_memory"
 
     Returns:
         TrainingConfig instance
@@ -395,6 +452,7 @@ def get_config_by_name(name: str) -> TrainingConfig:
         "overfit": get_overfit_config,
         "production": get_production_config,
         "track_aware": get_track_aware_config,
+        "optimized_default": get_optimized_default_config,
         "low_memory": get_low_memory_config
     }
 
@@ -414,6 +472,7 @@ __all__ = [
     'get_overfit_config',
     'get_production_config',
     'get_track_aware_config',
+    'get_optimized_default_config',
     'get_low_memory_config',
     'get_config_by_name'
 ]
