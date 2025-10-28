@@ -57,7 +57,7 @@ Where 'my_venv' is the name of your virtual environment, you can use whatever na
 {name_of_your_venv}/Scripts/Activate.ps1
 ```
 
-This will make the 'venv' activate, you can know this worked because a '(venv)' prefix will show up before every command in your console.
+This will make the 'venv' activate, you can know this worked because a prefix with the name of the virtual environment like (venv) or (my_venv) will show up before every command in your console.
 
 ---
 
