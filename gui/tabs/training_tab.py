@@ -25,6 +25,13 @@ from pytorch.training import GradioTrainer, TrainingMetrics
 from pytorch.utils.checkpoint_utils import get_latest_checkpoint
 from pytorch.data.split import split_dataset, save_split_manifest
 
+from pytorch.utils.vram_estimator import (
+    estimate_vram_usage,
+    check_vram_availability,
+    format_vram_breakdown,
+    get_total_vram_mb,
+)
+
 
 # ============================================================================
 # Backend Functions
@@ -356,6 +363,52 @@ def handle_training_button(button_text: str, model_name: str, *config_args) -> T
     else:
         return "⚠️ Unknown button state", button_text
 
+def update_vram_estimate_ui(
+    preset_name: str,
+    batch_size: int,
+    gradient_accumulation: int,
+    use_mixed_precision: bool,
+) -> tuple[str, str, str]:
+    """Update VRAM estimate based on current configuration."""
+    try:
+        config = get_config_by_name(preset_name)
+        
+        estimate = estimate_vram_usage(
+            vocab_size=config.vocab_size,
+            hidden_dim=config.hidden_dim,
+            num_layers=config.num_layers,
+            num_heads=config.num_heads,
+            ff_dim=config.ff_dim,
+            context_length=config.context_length,
+            batch_size=batch_size,
+            mixed_precision=use_mixed_precision,
+            gradient_accumulation_steps=gradient_accumulation,
+        )
+        
+        breakdown = format_vram_breakdown(estimate)
+        total_vram_gb = get_total_vram_mb() / 1024
+        
+        breakdown_full = (
+            f"**Estimated VRAM Usage:** {estimate.total_gb:.2f} GB\n"
+            f"**Available VRAM:** {total_vram_gb:.2f} GB\n\n"
+            f"{breakdown}"
+        )
+        
+        fits, level, message = check_vram_availability(estimate.total_mb)
+        
+        # Color-code warning
+        if level == "safe":
+            warning_styled = f"<div style='padding: 10px; background-color: #d4edda; border-left: 4px solid #28a745;'>{message}</div>"
+        elif level == "warning":
+            warning_styled = f"<div style='padding: 10px; background-color: #fff3cd; border-left: 4px solid #ffc107;'>{message}</div>"
+        else:
+            warning_styled = f"<div style='padding: 10px; background-color: #f8d7da; border-left: 4px solid #dc3545;'>{message}</div>"
+        
+        return breakdown_full, warning_styled, level
+        
+    except Exception as e:
+        error_msg = f"❌ Error estimating VRAM: {str(e)}"
+        return error_msg, error_msg, "error"
 
 def update_training_progress() -> Dict[str, Any]:
     """
@@ -692,6 +745,25 @@ def create_training_tab() -> gr.Tab:
                         info="How often to validate"
                     )
 
+                with gr.Accordion("💾 VRAM Estimation", open=True):
+                    gr.Markdown("""
+                    Check if the current configuration will fit in available GPU memory.
+                    This helps prevent Out-Of-Memory (OOM) errors during training.
+                    """)
+                    
+                    estimate_vram_btn = gr.Button(
+                        "🔍 Estimate VRAM Usage",
+                        variant="secondary",
+                        size="sm"
+                    )
+                    
+                    vram_breakdown = gr.Markdown(
+                        value="Click 'Estimate VRAM Usage' to see memory breakdown"
+                    )
+                    
+                    vram_warning = gr.Markdown(value="")
+                    vram_status_level = gr.State(value="unknown")
+
                 gr.Markdown("### 🎮 Training Controls")
 
                 with gr.Row():
@@ -861,6 +933,23 @@ def create_training_tab() -> gr.Tab:
                 early_stopping_checkbox,
                 validation_interval_slider,
             ]
+        )
+
+        preset_dropdown.change(
+            fn=update_vram_estimate_ui,
+            inputs=[preset_dropdown, batch_size_slider, gradient_accumulation_slider, use_mixed_precision_checkbox],
+            outputs=[vram_breakdown, vram_warning, vram_status_level]
+        )
+
+        estimate_vram_btn.click(
+            fn=update_vram_estimate_ui,
+            inputs=[
+                preset_dropdown,
+                batch_size_slider,
+                gradient_accumulation_slider,
+                use_mixed_precision_checkbox,
+            ],
+            outputs=[vram_breakdown, vram_warning, vram_status_level]
         )
 
         # Training button (start/pause/resume)
