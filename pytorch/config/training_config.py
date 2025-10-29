@@ -425,7 +425,7 @@ def get_optimized_default_config() -> TrainingConfig:
         
         # Logging
         use_tensorboard=True,
-        use_wandb=False,
+        use_wandb=True,
         
         # Early stopping
         early_stopping=True,
