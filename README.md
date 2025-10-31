@@ -197,13 +197,13 @@ First, on the top of the left column we get a model name field, as the name sugg
 
 ### Training Presets
 
-**Default**  
+- **Default**  
 Balanced training run with standard quality. Good for general use case.
 
-**Quick Test** 
+- **Quick Test** 
 Single-epoch validation run to verify your pipeline integrity before committing to longer training sessions.
 
-**Overfit** *(Diagnostic)*  
+- **Overfit** *(Diagnostic)*  
 Deliberately memorizes a small batch. While overfitting is typically undesirable, successful memorization confirms your training pipeline functions correctly. Very useful for debugging and sanity checks.
 
 - **production:** High-end preset, it will make a long training process with all features maxxed out BUT IT WILL CONSUME AN UNGODLY AMOUNT OF VRAM, make sure you have +16GB of VRAM before using this preset.
@@ -214,7 +214,7 @@ You can select a preset by opening the drop down menu and clicking 'Load Preset'
 
 **Important Note:** When you start a training for the first time you will be prompted to optionally log in to 'Weights and Biases' (wandb):
 
-![Screenshot of the Training tab of the Gradio GUI](assets/wandb_login.png "Training Tab")
+![Console screenshot showing the wandb login options: login, register and don't use](assets/wandb_login.png "Wandb login prompt")
 
 Which is a simple web-based database that the project uses to submit statistics of all your training runs. I used it because i moved a lot between computers while working on the project so keeping track of training runs without having to manuall transfer log files was very useful.
 
@@ -261,3 +261,11 @@ Below it we get options for conditional generation, this feature is not implemen
 And at the bottom we get some output options, where we can define the number of generated files and max length. Right below these options we get the 'Generated Music', which will use the model to generate some files, this process should only take a few minutes depending on how many files you are generating.
 
 If everything up to this point went well, you should have your generated MIDI files in the output path. You can import these files into any MIDI software (Reaper, Guitar Pro, Sybellius, Tux Guitar, Pro Tools, etc) and you will have your music. Enjoy!
+
+## Contributing
+Contributions and bug reports are welcome. Please submit issues and pull requests through the GitHub repository.
+
+Acknowledgments
+Built with PyTorch, Gradio, Pretty MIDI, MidiTok and miditoolkit.
+
+Big shoutout to wandb for allowing me to monitor my training sessions from the gym by logging into their website from my phone to see real time info about the training state of my models.
