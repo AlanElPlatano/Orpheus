@@ -12,7 +12,7 @@ import sys
 import gradio as gr
 import pandas as pd
 from pathlib import Path
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, Optional
 
 # Add parent directories to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -134,14 +134,83 @@ def load_training_config(preset_name: str) -> Tuple[Dict[str, Any], str]:
     try:
         config = get_config_by_name(preset_name)
         config_dict = {
+            # Main hyperparameters
             'batch_size': config.batch_size,
             'learning_rate': config.learning_rate,
             'num_epochs': config.num_epochs,
             'warmup_steps': config.warmup_steps,
+
+            # Basic advanced settings
             'gradient_accumulation': config.gradient_accumulation_steps,
             'use_mixed_precision': config.mixed_precision,
             'early_stopping': config.early_stopping,
             'validation_interval': config.validation_interval,
+
+            # Model architecture
+            'hidden_dim': config.hidden_dim,
+            'num_layers': config.num_layers,
+            'num_heads': config.num_heads,
+            'ff_dim': config.ff_dim,
+            'context_length': config.context_length,
+            'dropout': config.dropout,
+            'use_track_embeddings': config.use_track_embeddings,
+
+            # Optimizer settings
+            'weight_decay': config.weight_decay,
+            'adam_beta1': config.adam_beta1,
+            'adam_beta2': config.adam_beta2,
+            'adam_epsilon': config.adam_epsilon,
+            'max_grad_norm': config.max_grad_norm,
+
+            # Learning rate schedule
+            'lr_scheduler_type': config.lr_scheduler_type,
+            'min_lr_ratio': config.min_lr_ratio,
+
+            # Training loop settings
+            'max_steps': config.max_steps,
+
+            # Loss settings
+            'loss_type': config.loss_type,
+            'label_smoothing': config.label_smoothing,
+            'melody_violation_weight': config.melody_violation_weight,
+            'chord_violation_weight': config.chord_violation_weight,
+
+            # Data settings
+            'num_workers': config.num_workers,
+            'use_cache': config.use_cache,
+
+            # Validation settings
+            'do_validation': config.do_validation,
+            'validation_batches': config.validation_batches,
+
+            # Logging settings
+            'log_interval': config.log_interval,
+            'use_tensorboard': config.use_tensorboard,
+            'use_wandb': config.use_wandb,
+            'wandb_project': config.wandb_project if config.wandb_project else "Orpheus",
+            'wandb_run_name': config.wandb_run_name if config.wandb_run_name else "",
+
+            # Checkpointing settings
+            'checkpoint_interval': config.checkpoint_interval,
+            'save_best_only': config.save_best_only,
+            'max_checkpoints_to_keep': config.max_checkpoints_to_keep,
+
+            # Early stopping settings
+            'early_stopping_patience': config.early_stopping_patience,
+            'early_stopping_min_delta': config.early_stopping_min_delta,
+
+            # Hardware settings
+            'device': config.device,
+            'compile_model': config.compile_model,
+
+            # Reproducibility settings
+            'seed': config.seed,
+            'deterministic': config.deterministic,
+
+            # Debugging settings
+            'debug': config.debug,
+            'overfit_batch': config.overfit_batch,
+            'profile': config.profile,
         }
         return config_dict, f"✅ Loaded '{preset_name}' configuration"
     except Exception as e:
@@ -151,14 +220,69 @@ def load_training_config(preset_name: str) -> Tuple[Dict[str, Any], str]:
 def start_training_session(
     model_name: str,
     preset_name: str,
+    # Main hyperparameters
     batch_size: int,
     learning_rate: float,
     num_epochs: int,
     warmup_steps: int,
+    # Basic advanced settings
     gradient_accumulation: int,
     use_mixed_precision: bool,
     early_stopping: bool,
     validation_interval: int,
+    # Model architecture
+    hidden_dim: int,
+    num_layers: int,
+    num_heads: int,
+    ff_dim: int,
+    context_length: int,
+    dropout: float,
+    use_track_embeddings: bool,
+    # Optimizer settings
+    weight_decay: float,
+    adam_beta1: float,
+    adam_beta2: float,
+    adam_epsilon: float,
+    max_grad_norm: float,
+    # Learning rate schedule
+    lr_scheduler_type: str,
+    min_lr_ratio: float,
+    # Training loop settings
+    max_steps: Optional[int],
+    # Loss settings
+    loss_type: str,
+    label_smoothing: float,
+    melody_violation_weight: float,
+    chord_violation_weight: float,
+    # Data settings
+    num_workers: int,
+    use_cache: bool,
+    # Validation settings
+    do_validation: bool,
+    validation_batches: Optional[int],
+    # Logging settings
+    log_interval: int,
+    use_tensorboard: bool,
+    use_wandb: bool,
+    wandb_project: str,
+    wandb_run_name: str,
+    # Checkpointing settings
+    checkpoint_interval: int,
+    save_best_only: bool,
+    max_checkpoints_to_keep: int,
+    # Early stopping settings
+    early_stopping_patience: int,
+    early_stopping_min_delta: float,
+    # Hardware settings
+    device: str,
+    compile_model: bool,
+    # Reproducibility settings
+    seed: int,
+    deterministic: bool,
+    # Debugging settings
+    debug: bool,
+    overfit_batch: bool,
+    profile: bool,
 ) -> Tuple[str, str]:
     """
     Initialize and start training session.
@@ -215,15 +339,85 @@ def start_training_session(
         # Load configuration
         config = get_config_by_name(preset_name)
 
-        # Override with GUI values
+        # Override with GUI values - Main hyperparameters
         config.batch_size = batch_size
         config.learning_rate = learning_rate
         config.num_epochs = num_epochs
         config.warmup_steps = warmup_steps
+
+        # Basic advanced settings
         config.gradient_accumulation_steps = gradient_accumulation
         config.mixed_precision = use_mixed_precision
         config.early_stopping = early_stopping
         config.validation_interval = validation_interval
+
+        # Model architecture
+        config.hidden_dim = hidden_dim
+        config.num_layers = num_layers
+        config.num_heads = num_heads
+        config.ff_dim = ff_dim
+        config.context_length = context_length
+        config.dropout = dropout
+        config.use_track_embeddings = use_track_embeddings
+
+        # Optimizer settings
+        config.weight_decay = weight_decay
+        config.adam_beta1 = adam_beta1
+        config.adam_beta2 = adam_beta2
+        config.adam_epsilon = adam_epsilon
+        config.max_grad_norm = max_grad_norm
+
+        # Learning rate schedule
+        config.lr_scheduler_type = lr_scheduler_type
+        config.min_lr_ratio = min_lr_ratio
+
+        # Training loop settings
+        config.max_steps = max_steps
+
+        # Loss settings
+        config.loss_type = loss_type
+        config.label_smoothing = label_smoothing
+        config.melody_violation_weight = melody_violation_weight
+        config.chord_violation_weight = chord_violation_weight
+
+        # Data settings
+        config.num_workers = num_workers
+        config.use_cache = use_cache
+
+        # Validation settings
+        config.do_validation = do_validation
+        config.validation_batches = validation_batches
+
+        # Logging settings
+        config.log_interval = log_interval
+        config.use_tensorboard = use_tensorboard
+        config.use_wandb = use_wandb
+        config.wandb_project = wandb_project if wandb_project else None
+        config.wandb_run_name = wandb_run_name if wandb_run_name else None
+
+        # Checkpointing settings
+        config.checkpoint_interval = checkpoint_interval
+        config.save_best_only = save_best_only
+        config.max_checkpoints_to_keep = max_checkpoints_to_keep
+
+        # Early stopping settings
+        config.early_stopping_patience = early_stopping_patience
+        config.early_stopping_min_delta = early_stopping_min_delta
+
+        # Hardware settings
+        config.device = device
+        config.compile_model = compile_model
+
+        # Reproducibility settings
+        config.seed = seed
+        config.deterministic = deterministic
+
+        # Debugging settings
+        config.debug = debug
+        config.overfit_batch = overfit_batch
+        config.profile = profile
+
+        # Path overrides
         config.split_manifest_path = manifest_path
         config.checkpoint_dir = checkpoint_dir
 
@@ -548,14 +742,69 @@ def load_checkpoint_for_training(
         if 'config' in checkpoint:
             saved_config = checkpoint['config']
             config_updates = {
+                # Main hyperparameters
                 'batch_size': saved_config.get('batch_size', 8),
                 'learning_rate': saved_config.get('learning_rate', 1e-4),
                 'num_epochs': saved_config.get('num_epochs', 50),
                 'warmup_steps': saved_config.get('warmup_steps', 1000),
+                # Basic advanced settings
                 'gradient_accumulation': saved_config.get('gradient_accumulation_steps', 1),
                 'use_mixed_precision': saved_config.get('mixed_precision', True),
                 'early_stopping': saved_config.get('early_stopping', True),
                 'validation_interval': saved_config.get('validation_interval', 500),
+                # Model architecture
+                'hidden_dim': saved_config.get('hidden_dim', 512),
+                'num_layers': saved_config.get('num_layers', 8),
+                'num_heads': saved_config.get('num_heads', 8),
+                'ff_dim': saved_config.get('ff_dim', 2048),
+                'context_length': saved_config.get('context_length', 2048),
+                'dropout': saved_config.get('dropout', 0.1),
+                'use_track_embeddings': saved_config.get('use_track_embeddings', True),
+                # Optimizer settings
+                'weight_decay': saved_config.get('weight_decay', 0.01),
+                'adam_beta1': saved_config.get('adam_beta1', 0.9),
+                'adam_beta2': saved_config.get('adam_beta2', 0.999),
+                'adam_epsilon': saved_config.get('adam_epsilon', 1e-8),
+                'max_grad_norm': saved_config.get('max_grad_norm', 1.0),
+                # Learning rate schedule
+                'lr_scheduler_type': saved_config.get('lr_scheduler_type', 'cosine'),
+                'min_lr_ratio': saved_config.get('min_lr_ratio', 0.1),
+                # Training loop settings
+                'max_steps': saved_config.get('max_steps', None),
+                # Loss settings
+                'loss_type': saved_config.get('loss_type', 'weighted'),
+                'label_smoothing': saved_config.get('label_smoothing', 0.0),
+                'melody_violation_weight': saved_config.get('melody_violation_weight', 10.0),
+                'chord_violation_weight': saved_config.get('chord_violation_weight', 5.0),
+                # Data settings
+                'num_workers': saved_config.get('num_workers', 0),
+                'use_cache': saved_config.get('use_cache', False),
+                # Validation settings
+                'do_validation': saved_config.get('do_validation', True),
+                'validation_batches': saved_config.get('validation_batches', None),
+                # Logging settings
+                'log_interval': saved_config.get('log_interval', 50),
+                'use_tensorboard': saved_config.get('use_tensorboard', True),
+                'use_wandb': saved_config.get('use_wandb', False),
+                'wandb_project': saved_config.get('wandb_project', 'Orpheus'),
+                'wandb_run_name': saved_config.get('wandb_run_name', ''),
+                # Checkpointing settings
+                'checkpoint_interval': saved_config.get('checkpoint_interval', 1000),
+                'save_best_only': saved_config.get('save_best_only', False),
+                'max_checkpoints_to_keep': saved_config.get('max_checkpoints_to_keep', 5),
+                # Early stopping settings
+                'early_stopping_patience': saved_config.get('early_stopping_patience', 10),
+                'early_stopping_min_delta': saved_config.get('early_stopping_min_delta', 0.001),
+                # Hardware settings
+                'device': saved_config.get('device', 'cuda'),
+                'compile_model': saved_config.get('compile_model', False),
+                # Reproducibility settings
+                'seed': saved_config.get('seed', 42),
+                'deterministic': saved_config.get('deterministic', False),
+                # Debugging settings
+                'debug': saved_config.get('debug', False),
+                'overfit_batch': saved_config.get('overfit_batch', False),
+                'profile': saved_config.get('profile', False),
             }
 
         status_msg = (
@@ -691,6 +940,329 @@ def create_training_tab() -> gr.Tab:
                         step=50,
                         info="How often to validate"
                     )
+
+                    # ===== Model Architecture =====
+                    with gr.Accordion("Model Architecture", open=False):
+                        hidden_dim_slider = gr.Slider(
+                            label="Hidden Dimension",
+                            minimum=128,
+                            maximum=1024,
+                            value=512,
+                            step=64,
+                            info="Size of hidden layers"
+                        )
+
+                        num_layers_slider = gr.Slider(
+                            label="Number of Layers",
+                            minimum=2,
+                            maximum=16,
+                            value=8,
+                            step=1,
+                            info="Number of transformer layers"
+                        )
+
+                        num_heads_slider = gr.Slider(
+                            label="Number of Attention Heads",
+                            minimum=2,
+                            maximum=16,
+                            value=8,
+                            step=1,
+                            info="Number of attention heads"
+                        )
+
+                        ff_dim_slider = gr.Slider(
+                            label="Feed-Forward Dimension",
+                            minimum=512,
+                            maximum=4096,
+                            value=2048,
+                            step=256,
+                            info="Size of feed-forward layers"
+                        )
+
+                        context_length_slider = gr.Slider(
+                            label="Context Length",
+                            minimum=256,
+                            maximum=4096,
+                            value=2048,
+                            step=256,
+                            info="Maximum sequence length"
+                        )
+
+                        dropout_slider = gr.Slider(
+                            label="Dropout",
+                            minimum=0.0,
+                            maximum=0.5,
+                            value=0.1,
+                            step=0.05,
+                            info="Dropout probability"
+                        )
+
+                        use_track_embeddings_checkbox = gr.Checkbox(
+                            label="Use Track Embeddings",
+                            value=True,
+                            info="Use separate embeddings for melody vs chord tracks"
+                        )
+
+                    # ===== Optimizer Settings =====
+                    with gr.Accordion("Optimizer Settings", open=False):
+                        weight_decay_input = gr.Number(
+                            label="Weight Decay",
+                            value=0.01,
+                            info="L2 regularization strength"
+                        )
+
+                        adam_beta1_slider = gr.Slider(
+                            label="Adam Beta1",
+                            minimum=0.8,
+                            maximum=0.999,
+                            value=0.9,
+                            step=0.001,
+                            info="First moment decay"
+                        )
+
+                        adam_beta2_slider = gr.Slider(
+                            label="Adam Beta2",
+                            minimum=0.9,
+                            maximum=0.9999,
+                            value=0.999,
+                            step=0.0001,
+                            info="Second moment decay"
+                        )
+
+                        adam_epsilon_input = gr.Number(
+                            label="Adam Epsilon",
+                            value=1e-8,
+                            info="Numerical stability constant"
+                        )
+
+                        max_grad_norm_input = gr.Number(
+                            label="Max Gradient Norm",
+                            value=1.0,
+                            info="Gradient clipping threshold"
+                        )
+
+                    # ===== Learning Rate Schedule =====
+                    with gr.Accordion("Learning Rate Schedule", open=False):
+                        lr_scheduler_type_dropdown = gr.Dropdown(
+                            label="LR Scheduler Type",
+                            choices=["linear", "cosine", "constant"],
+                            value="cosine",
+                            info="Type of learning rate schedule"
+                        )
+
+                        min_lr_ratio_slider = gr.Slider(
+                            label="Min LR Ratio",
+                            minimum=0.0,
+                            maximum=1.0,
+                            value=0.1,
+                            step=0.05,
+                            info="Minimum LR as ratio of max LR"
+                        )
+
+                    # ===== Training Loop Settings =====
+                    with gr.Accordion("Training Loop Settings", open=False):
+                        max_steps_input = gr.Number(
+                            label="Max Steps (optional)",
+                            value=None,
+                            info="If set, overrides num_epochs"
+                        )
+
+                    # ===== Loss Settings =====
+                    with gr.Accordion("Loss Settings", open=False):
+                        loss_type_dropdown = gr.Dropdown(
+                            label="Loss Type",
+                            choices=["weighted", "constraint_aware", "track_aware"],
+                            value="weighted",
+                            info="Type of loss function"
+                        )
+
+                        label_smoothing_slider = gr.Slider(
+                            label="Label Smoothing",
+                            minimum=0.0,
+                            maximum=0.2,
+                            value=0.0,
+                            step=0.01,
+                            info="Label smoothing factor"
+                        )
+
+                        melody_violation_weight_slider = gr.Slider(
+                            label="Melody Violation Weight",
+                            minimum=1.0,
+                            maximum=20.0,
+                            value=10.0,
+                            step=1.0,
+                            info="Weight for melody constraint violations"
+                        )
+
+                        chord_violation_weight_slider = gr.Slider(
+                            label="Chord Violation Weight",
+                            minimum=1.0,
+                            maximum=20.0,
+                            value=5.0,
+                            step=1.0,
+                            info="Weight for chord constraint violations"
+                        )
+
+                    # ===== Data Settings =====
+                    with gr.Accordion("Data Settings", open=False):
+                        num_workers_slider = gr.Slider(
+                            label="Number of Workers",
+                            minimum=0,
+                            maximum=8,
+                            value=0,
+                            step=1,
+                            info="Number of data loading workers (0=main process)"
+                        )
+
+                        use_cache_checkbox = gr.Checkbox(
+                            label="Use Cache",
+                            value=False,
+                            info="Cache dataset in memory"
+                        )
+
+                    # ===== Validation Settings =====
+                    with gr.Accordion("Validation Settings", open=False):
+                        do_validation_checkbox = gr.Checkbox(
+                            label="Do Validation",
+                            value=True,
+                            info="Perform validation during training"
+                        )
+
+                        validation_batches_input = gr.Number(
+                            label="Validation Batches (optional)",
+                            value=None,
+                            info="Limit number of validation batches"
+                        )
+
+                    # ===== Logging Settings =====
+                    with gr.Accordion("Logging Settings", open=False):
+                        log_interval_slider = gr.Slider(
+                            label="Log Interval (steps)",
+                            minimum=10,
+                            maximum=500,
+                            value=50,
+                            step=10,
+                            info="How often to log training metrics"
+                        )
+
+                        use_tensorboard_checkbox = gr.Checkbox(
+                            label="Use TensorBoard",
+                            value=True,
+                            info="Enable TensorBoard logging"
+                        )
+
+                        use_wandb_checkbox = gr.Checkbox(
+                            label="Use Weights & Biases",
+                            value=False,
+                            info="Enable W&B logging"
+                        )
+
+                        wandb_project_input = gr.Textbox(
+                            label="W&B Project Name",
+                            value="Orpheus",
+                            info="Weights & Biases project name"
+                        )
+
+                        wandb_run_name_input = gr.Textbox(
+                            label="W&B Run Name (optional)",
+                            value="",
+                            info="Custom run name for W&B"
+                        )
+
+                    # ===== Checkpointing Settings =====
+                    with gr.Accordion("Checkpointing Settings", open=False):
+                        checkpoint_interval_slider = gr.Slider(
+                            label="Checkpoint Interval (steps)",
+                            minimum=100,
+                            maximum=5000,
+                            value=1000,
+                            step=100,
+                            info="How often to save checkpoints"
+                        )
+
+                        save_best_only_checkbox = gr.Checkbox(
+                            label="Save Best Only",
+                            value=False,
+                            info="Only save the best model checkpoint"
+                        )
+
+                        max_checkpoints_to_keep_slider = gr.Slider(
+                            label="Max Checkpoints to Keep",
+                            minimum=1,
+                            maximum=20,
+                            value=5,
+                            step=1,
+                            info="Maximum number of checkpoints to retain"
+                        )
+
+                    # ===== Early Stopping Settings =====
+                    with gr.Accordion("Early Stopping Settings", open=False):
+                        early_stopping_patience_slider = gr.Slider(
+                            label="Early Stopping Patience",
+                            minimum=1,
+                            maximum=50,
+                            value=10,
+                            step=1,
+                            info="Validation intervals without improvement"
+                        )
+
+                        early_stopping_min_delta_input = gr.Number(
+                            label="Early Stopping Min Delta",
+                            value=0.001,
+                            info="Minimum improvement to reset patience"
+                        )
+
+                    # ===== Hardware Settings =====
+                    with gr.Accordion("Hardware Settings", open=False):
+                        device_dropdown = gr.Dropdown(
+                            label="Device",
+                            choices=["auto", "cuda", "cpu"],
+                            value="cuda",
+                            info="Device to use for training"
+                        )
+
+                        compile_model_checkbox = gr.Checkbox(
+                            label="Compile Model",
+                            value=False,
+                            info="Use torch.compile (PyTorch 2.0+)"
+                        )
+
+                    # ===== Reproducibility Settings =====
+                    with gr.Accordion("Reproducibility Settings", open=False):
+                        seed_slider = gr.Slider(
+                            label="Random Seed",
+                            minimum=0,
+                            maximum=10000,
+                            value=42,
+                            step=1,
+                            info="Random seed for reproducibility"
+                        )
+
+                        deterministic_checkbox = gr.Checkbox(
+                            label="Deterministic Mode",
+                            value=False,
+                            info="More reproducible but slower"
+                        )
+
+                    # ===== Debugging Settings =====
+                    with gr.Accordion("Debugging Settings", open=False):
+                        debug_checkbox = gr.Checkbox(
+                            label="Debug Mode",
+                            value=False,
+                            info="Enable debug mode (more logging)"
+                        )
+
+                        overfit_batch_checkbox = gr.Checkbox(
+                            label="Overfit Batch",
+                            value=False,
+                            info="Train on single batch (for debugging)"
+                        )
+
+                        profile_checkbox = gr.Checkbox(
+                            label="Enable Profiling",
+                            value=False,
+                            info="Enable performance profiling"
+                        )
 
                 gr.Markdown("### 🎮 Training Controls")
 
@@ -835,31 +1407,141 @@ def create_training_tab() -> gr.Tab:
             if config_dict:
                 return [
                     status,
+                    # Main hyperparameters
                     config_dict['batch_size'],
                     config_dict['learning_rate'],
                     config_dict['num_epochs'],
                     config_dict['warmup_steps'],
+                    # Basic advanced settings
                     config_dict['gradient_accumulation'],
                     config_dict['use_mixed_precision'],
                     config_dict['early_stopping'],
                     config_dict['validation_interval'],
+                    # Model architecture
+                    config_dict['hidden_dim'],
+                    config_dict['num_layers'],
+                    config_dict['num_heads'],
+                    config_dict['ff_dim'],
+                    config_dict['context_length'],
+                    config_dict['dropout'],
+                    config_dict['use_track_embeddings'],
+                    # Optimizer settings
+                    config_dict['weight_decay'],
+                    config_dict['adam_beta1'],
+                    config_dict['adam_beta2'],
+                    config_dict['adam_epsilon'],
+                    config_dict['max_grad_norm'],
+                    # Learning rate schedule
+                    config_dict['lr_scheduler_type'],
+                    config_dict['min_lr_ratio'],
+                    # Training loop settings
+                    config_dict['max_steps'],
+                    # Loss settings
+                    config_dict['loss_type'],
+                    config_dict['label_smoothing'],
+                    config_dict['melody_violation_weight'],
+                    config_dict['chord_violation_weight'],
+                    # Data settings
+                    config_dict['num_workers'],
+                    config_dict['use_cache'],
+                    # Validation settings
+                    config_dict['do_validation'],
+                    config_dict['validation_batches'],
+                    # Logging settings
+                    config_dict['log_interval'],
+                    config_dict['use_tensorboard'],
+                    config_dict['use_wandb'],
+                    config_dict['wandb_project'],
+                    config_dict['wandb_run_name'],
+                    # Checkpointing settings
+                    config_dict['checkpoint_interval'],
+                    config_dict['save_best_only'],
+                    config_dict['max_checkpoints_to_keep'],
+                    # Early stopping settings
+                    config_dict['early_stopping_patience'],
+                    config_dict['early_stopping_min_delta'],
+                    # Hardware settings
+                    config_dict['device'],
+                    config_dict['compile_model'],
+                    # Reproducibility settings
+                    config_dict['seed'],
+                    config_dict['deterministic'],
+                    # Debugging settings
+                    config_dict['debug'],
+                    config_dict['overfit_batch'],
+                    config_dict['profile'],
                 ]
             else:
-                return [status] + [gr.update()] * 8
+                return [status] + [gr.update()] * 50
 
         load_preset_btn.click(
             fn=on_load_preset,
             inputs=[preset_dropdown],
             outputs=[
                 config_status,
+                # Main hyperparameters
                 batch_size_slider,
                 learning_rate_input,
                 num_epochs_slider,
                 warmup_steps_slider,
+                # Basic advanced settings
                 gradient_accumulation_slider,
                 use_mixed_precision_checkbox,
                 early_stopping_checkbox,
                 validation_interval_slider,
+                # Model architecture
+                hidden_dim_slider,
+                num_layers_slider,
+                num_heads_slider,
+                ff_dim_slider,
+                context_length_slider,
+                dropout_slider,
+                use_track_embeddings_checkbox,
+                # Optimizer settings
+                weight_decay_input,
+                adam_beta1_slider,
+                adam_beta2_slider,
+                adam_epsilon_input,
+                max_grad_norm_input,
+                # Learning rate schedule
+                lr_scheduler_type_dropdown,
+                min_lr_ratio_slider,
+                # Training loop settings
+                max_steps_input,
+                # Loss settings
+                loss_type_dropdown,
+                label_smoothing_slider,
+                melody_violation_weight_slider,
+                chord_violation_weight_slider,
+                # Data settings
+                num_workers_slider,
+                use_cache_checkbox,
+                # Validation settings
+                do_validation_checkbox,
+                validation_batches_input,
+                # Logging settings
+                log_interval_slider,
+                use_tensorboard_checkbox,
+                use_wandb_checkbox,
+                wandb_project_input,
+                wandb_run_name_input,
+                # Checkpointing settings
+                checkpoint_interval_slider,
+                save_best_only_checkbox,
+                max_checkpoints_to_keep_slider,
+                # Early stopping settings
+                early_stopping_patience_slider,
+                early_stopping_min_delta_input,
+                # Hardware settings
+                device_dropdown,
+                compile_model_checkbox,
+                # Reproducibility settings
+                seed_slider,
+                deterministic_checkbox,
+                # Debugging settings
+                debug_checkbox,
+                overfit_batch_checkbox,
+                profile_checkbox,
             ]
         )
 
@@ -870,14 +1552,69 @@ def create_training_tab() -> gr.Tab:
                 training_button,  # Current button text
                 model_name_input,  # Model name
                 preset_dropdown,
+                # Main hyperparameters
                 batch_size_slider,
                 learning_rate_input,
                 num_epochs_slider,
                 warmup_steps_slider,
+                # Basic advanced settings
                 gradient_accumulation_slider,
                 use_mixed_precision_checkbox,
                 early_stopping_checkbox,
                 validation_interval_slider,
+                # Model architecture
+                hidden_dim_slider,
+                num_layers_slider,
+                num_heads_slider,
+                ff_dim_slider,
+                context_length_slider,
+                dropout_slider,
+                use_track_embeddings_checkbox,
+                # Optimizer settings
+                weight_decay_input,
+                adam_beta1_slider,
+                adam_beta2_slider,
+                adam_epsilon_input,
+                max_grad_norm_input,
+                # Learning rate schedule
+                lr_scheduler_type_dropdown,
+                min_lr_ratio_slider,
+                # Training loop settings
+                max_steps_input,
+                # Loss settings
+                loss_type_dropdown,
+                label_smoothing_slider,
+                melody_violation_weight_slider,
+                chord_violation_weight_slider,
+                # Data settings
+                num_workers_slider,
+                use_cache_checkbox,
+                # Validation settings
+                do_validation_checkbox,
+                validation_batches_input,
+                # Logging settings
+                log_interval_slider,
+                use_tensorboard_checkbox,
+                use_wandb_checkbox,
+                wandb_project_input,
+                wandb_run_name_input,
+                # Checkpointing settings
+                checkpoint_interval_slider,
+                save_best_only_checkbox,
+                max_checkpoints_to_keep_slider,
+                # Early stopping settings
+                early_stopping_patience_slider,
+                early_stopping_min_delta_input,
+                # Hardware settings
+                device_dropdown,
+                compile_model_checkbox,
+                # Reproducibility settings
+                seed_slider,
+                deterministic_checkbox,
+                # Debugging settings
+                debug_checkbox,
+                overfit_batch_checkbox,
+                profile_checkbox,
             ],
             outputs=[status_display, training_button]
         )
@@ -908,31 +1645,141 @@ def create_training_tab() -> gr.Tab:
             if config_updates:
                 return [
                     status_msg,
+                    # Main hyperparameters
                     config_updates['batch_size'],
                     config_updates['learning_rate'],
                     config_updates['num_epochs'],
                     config_updates['warmup_steps'],
+                    # Basic advanced settings
                     config_updates['gradient_accumulation'],
                     config_updates['use_mixed_precision'],
                     config_updates['early_stopping'],
                     config_updates['validation_interval'],
+                    # Model architecture
+                    config_updates['hidden_dim'],
+                    config_updates['num_layers'],
+                    config_updates['num_heads'],
+                    config_updates['ff_dim'],
+                    config_updates['context_length'],
+                    config_updates['dropout'],
+                    config_updates['use_track_embeddings'],
+                    # Optimizer settings
+                    config_updates['weight_decay'],
+                    config_updates['adam_beta1'],
+                    config_updates['adam_beta2'],
+                    config_updates['adam_epsilon'],
+                    config_updates['max_grad_norm'],
+                    # Learning rate schedule
+                    config_updates['lr_scheduler_type'],
+                    config_updates['min_lr_ratio'],
+                    # Training loop settings
+                    config_updates['max_steps'],
+                    # Loss settings
+                    config_updates['loss_type'],
+                    config_updates['label_smoothing'],
+                    config_updates['melody_violation_weight'],
+                    config_updates['chord_violation_weight'],
+                    # Data settings
+                    config_updates['num_workers'],
+                    config_updates['use_cache'],
+                    # Validation settings
+                    config_updates['do_validation'],
+                    config_updates['validation_batches'],
+                    # Logging settings
+                    config_updates['log_interval'],
+                    config_updates['use_tensorboard'],
+                    config_updates['use_wandb'],
+                    config_updates['wandb_project'],
+                    config_updates['wandb_run_name'],
+                    # Checkpointing settings
+                    config_updates['checkpoint_interval'],
+                    config_updates['save_best_only'],
+                    config_updates['max_checkpoints_to_keep'],
+                    # Early stopping settings
+                    config_updates['early_stopping_patience'],
+                    config_updates['early_stopping_min_delta'],
+                    # Hardware settings
+                    config_updates['device'],
+                    config_updates['compile_model'],
+                    # Reproducibility settings
+                    config_updates['seed'],
+                    config_updates['deterministic'],
+                    # Debugging settings
+                    config_updates['debug'],
+                    config_updates['overfit_batch'],
+                    config_updates['profile'],
                 ]
             else:
-                return [status_msg] + [gr.update()] * 8
+                return [status_msg] + [gr.update()] * 50
 
         load_checkpoint_btn.click(
             fn=on_load_checkpoint,
             inputs=[checkpoint_dropdown, checkpoint_dir_input, preset_dropdown],
             outputs=[
                 checkpoint_load_status,
+                # Main hyperparameters
                 batch_size_slider,
                 learning_rate_input,
                 num_epochs_slider,
                 warmup_steps_slider,
+                # Basic advanced settings
                 gradient_accumulation_slider,
                 use_mixed_precision_checkbox,
                 early_stopping_checkbox,
                 validation_interval_slider,
+                # Model architecture
+                hidden_dim_slider,
+                num_layers_slider,
+                num_heads_slider,
+                ff_dim_slider,
+                context_length_slider,
+                dropout_slider,
+                use_track_embeddings_checkbox,
+                # Optimizer settings
+                weight_decay_input,
+                adam_beta1_slider,
+                adam_beta2_slider,
+                adam_epsilon_input,
+                max_grad_norm_input,
+                # Learning rate schedule
+                lr_scheduler_type_dropdown,
+                min_lr_ratio_slider,
+                # Training loop settings
+                max_steps_input,
+                # Loss settings
+                loss_type_dropdown,
+                label_smoothing_slider,
+                melody_violation_weight_slider,
+                chord_violation_weight_slider,
+                # Data settings
+                num_workers_slider,
+                use_cache_checkbox,
+                # Validation settings
+                do_validation_checkbox,
+                validation_batches_input,
+                # Logging settings
+                log_interval_slider,
+                use_tensorboard_checkbox,
+                use_wandb_checkbox,
+                wandb_project_input,
+                wandb_run_name_input,
+                # Checkpointing settings
+                checkpoint_interval_slider,
+                save_best_only_checkbox,
+                max_checkpoints_to_keep_slider,
+                # Early stopping settings
+                early_stopping_patience_slider,
+                early_stopping_min_delta_input,
+                # Hardware settings
+                device_dropdown,
+                compile_model_checkbox,
+                # Reproducibility settings
+                seed_slider,
+                deterministic_checkbox,
+                # Debugging settings
+                debug_checkbox,
+                overfit_batch_checkbox,
+                profile_checkbox,
             ]
         )
 
