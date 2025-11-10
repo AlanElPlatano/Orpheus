@@ -68,6 +68,8 @@ Activate the environment:
 
 A `(my_venv)` prefix in your terminal (or whatever name you chose) confirms successful activation.
 
+---
+
 ### PyTorch Installation
 
 PyTorch requires a specific installation depending on your hardware configuration.
@@ -128,7 +130,7 @@ Now you can open any browser and go to 'http://localhost:42069', here you will s
 
 ![Screenshot of the Preprocess tab of the Gradio GUI](assets/preprocess_gui.png "Browser screenshot")
 
-The preprocessing stage prepares your MIDI files for optimal training performance.
+The preprocessing tab prepares your MIDI files for optimal training performance.
 
 ### Backup & Recovery
 
@@ -168,7 +170,7 @@ On the bottom of the pagewe get the basic buttons to start the process and cance
 
 ![Screenshot of the Augmentation tab](assets/augmentation_tab.png "Augmentation tab")
 
-This tab is critical because it performs transposition to improve model generalization and perform data augmentation.
+This tab is very important because it performs transposition to improve model generalization and perform data augmentation.
 
 ### Transposition Strategy
 
@@ -206,21 +208,21 @@ Single-epoch validation run to verify your pipeline integrity before committing 
 - **Overfit** *(Diagnostic)*  
 Deliberately memorizes a small batch. While overfitting is typically undesirable, successful memorization confirms your training pipeline functions correctly. Very useful for debugging and sanity checks.
 
-- **production:** High-end preset, it will make a long training process with all features maxxed out BUT IT WILL CONSUME AN UNGODLY AMOUNT OF VRAM, make sure you have +16GB of VRAM before using this preset.
+- **production:**
+High-end preset, it will make a long training process with all features maxxed out BUT IT WILL CONSUME AN UNGODLY AMOUNT OF VRAM, make sure you have +16GB of VRAM before using this preset.
 
-- **low_memory:** This preset exists solely to replace the 'default' and 'production' presets for low memory systems like laptops (~4GB VRAM). Keep in mind that this preset will use a shorter context window and will most likely truncate training data.
+- **low_memory:**
+This preset exists solely to replace the 'default' and 'production' presets for low memory systems like laptops (~4GB VRAM). Keep in mind that this preset will use a shorter context window and will most likely truncate training data.
 
 You can select a preset by opening the drop down menu and clicking 'Load Preset', this will replace all the options with the ones from the preset. Once you have everything ready, you can scroll down and click 'Start Training' which will start the process.
 
 **Important Note:** When you start a training for the first time you will be prompted to optionally log in to 'Weights and Biases' (wandb):
 
-![Console screenshot showing the wandb login options: login, register and don't use](assets/wandb_login.png "Wandb login prompt")
+![Console screenshot showing the wandb login options: login, register and don't use. Sorry for the picture instead of screenshot](assets/wandb_login.png "Wandb login prompt")
 
-Which is a simple web-based database that the project uses to submit statistics of all your training runs. I used it because i moved a lot between computers while working on the project so keeping track of training runs without having to manuall transfer log files was very useful.
+Which is a simple web-based database that the project uses to submit statistics of all your training runs. I used it because i moved a lot between computers while working on the project so keeping track of training runs without having to manually transfer log files was very useful.
 
-You can type "3" and "Enter if you don't need it.
-
-When you start training, the system will also automatically split your augmented dataset into training (80%), validation (10%), and test (10%) sets. This ensures all 12 transpositions of each song stay together to prevent data leakage.
+You can type "3" and "Enter" if you don't need it.
 
 Unless you selected 'quick_test' this will start a process that will take several hours to finish, for reference, my RTX 3060 took about 12 hours with the production preset and 3000 files.
 
@@ -265,7 +267,8 @@ If everything up to this point went well, you should have your generated MIDI fi
 ## Contributing
 Contributions and bug reports are welcome. Please submit issues and pull requests through the GitHub repository.
 
-Acknowledgments
+Acknowledgments:
+
 Built with PyTorch, Gradio, Pretty MIDI, MidiTok and miditoolkit.
 
 Big shoutout to wandb for allowing me to monitor my training sessions from the gym by logging into their website from my phone to see real time info about the training state of my models.
