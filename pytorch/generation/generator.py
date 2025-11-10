@@ -18,6 +18,12 @@ from .generation_config import GenerationConfig, GenerationResult
 from .two_stage import TwoStageGenerator
 from .validator import ConstraintValidator
 from .midi_export import tokens_to_midi, save_token_sequence
+from ..data.constants import (
+    KEY_TO_ID,
+    TIME_SIG_TO_ID,
+    CONDITION_NONE_ID,
+    TEMPO_NONE_VALUE
+)
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +55,55 @@ class MusicGenerator:
         self.is_loaded = False
 
         logger.info(f"MusicGenerator initialized (device: {self.device})")
+
+    def _create_conditioning_tensors(self) -> tuple:
+        """
+        Create conditioning tensors from generation config.
+
+        Converts key, tempo, and time_signature from config into tensor format
+        that the model expects. If any condition is None, uses the "none" ID/value.
+
+        Returns:
+            Tuple of (key_id, tempo_value, time_sig_id) as tensors
+        """
+        # Extract key signature and convert to ID
+        if self.config.key is not None and self.config.key in KEY_TO_ID:
+            key_id = KEY_TO_ID[self.config.key]
+        else:
+            key_id = CONDITION_NONE_ID
+
+        # Extract tempo value
+        if self.config.tempo is not None:
+            tempo_value = float(self.config.tempo)
+        else:
+            tempo_value = TEMPO_NONE_VALUE
+
+        # Extract time signature and convert to ID
+        if self.config.time_signature is not None and self.config.time_signature in TIME_SIG_TO_ID:
+            time_sig_id = TIME_SIG_TO_ID[self.config.time_signature]
+        else:
+            time_sig_id = CONDITION_NONE_ID
+
+        # Create tensors (batch size = 1 for generation)
+        key_id_tensor = torch.tensor([key_id], dtype=torch.long, device=self.device)
+        tempo_value_tensor = torch.tensor([tempo_value], dtype=torch.float32, device=self.device)
+        time_sig_id_tensor = torch.tensor([time_sig_id], dtype=torch.long, device=self.device)
+
+        # Log conditioning information
+        condition_info = []
+        if key_id != CONDITION_NONE_ID:
+            condition_info.append(f"key={self.config.key}")
+        if tempo_value != TEMPO_NONE_VALUE:
+            condition_info.append(f"tempo={tempo_value:.1f}")
+        if time_sig_id != CONDITION_NONE_ID:
+            condition_info.append(f"time_sig={self.config.time_signature}")
+
+        if condition_info:
+            logger.info(f"Conditioning: {', '.join(condition_info)}")
+        else:
+            logger.info("Conditioning: None (unconditioned generation)")
+
+        return key_id_tensor, tempo_value_tensor, time_sig_id_tensor
 
     def load_checkpoint(self, checkpoint_path: Path) -> bool:
         """
@@ -237,11 +292,19 @@ class MusicGenerator:
             try:
                 logger.info(f"Generation attempt {attempt}/{self.config.max_retries}")
 
+                # Create conditioning tensors from config (if model supports conditioning)
+                key_ids, tempo_values, time_sig_ids = None, None, None
+                if hasattr(self.model, 'use_conditioning') and self.model.use_conditioning:
+                    key_ids, tempo_values, time_sig_ids = self._create_conditioning_tensors()
+
                 # Generate token sequence
                 token_ids = self.two_stage_generator.generate_complete_sequence(
                     prompt_tokens=prompt_tokens,
                     seed=generation_seed,
-                    temperature=current_temperature
+                    temperature=current_temperature,
+                    key_ids=key_ids,
+                    tempo_values=tempo_values,
+                    time_sig_ids=time_sig_ids
                 )
 
                 result.token_ids = token_ids

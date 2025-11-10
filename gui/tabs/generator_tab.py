@@ -33,6 +33,30 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
+# Helper Functions
+# ============================================================================
+
+def parse_time_signature(time_sig_str: str) -> Tuple[int, int]:
+    """
+    Parse time signature string like '4/4' or '6/8' into tuple (numerator, denominator).
+
+    Args:
+        time_sig_str: Time signature string (e.g., "4/4", "6/8")
+
+    Returns:
+        Tuple of (numerator, denominator)
+    """
+    parts = time_sig_str.split('/')
+    if len(parts) == 2:
+        try:
+            return (int(parts[0]), int(parts[1]))
+        except ValueError:
+            pass
+    # Default to 4/4 if parsing fails
+    return (4, 4)
+
+
+# ============================================================================
 # Backend Functions
 # ============================================================================
 
@@ -98,6 +122,9 @@ def start_generation(
     repetition_penalty: float,
     max_bars: int,
     output_dir: str,
+    key_signature: str,
+    tempo: float,
+    time_signature: str,
     progress=gr.Progress()
 ) -> Tuple[str, pd.DataFrame, str]:
     """Start music generation."""
@@ -124,6 +151,11 @@ def start_generation(
         config.max_generation_bars = max_bars
         config.output_dir = Path(output_dir)
         config.output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Apply conditioning if not set to "Auto"
+        config.key = None if key_signature == "Auto" else key_signature
+        config.tempo = None if key_signature == "Auto" else tempo  # tempo also respects "Auto" key
+        config.time_signature = None if time_signature == "Auto" else parse_time_signature(time_signature)
 
         # Update generator config
         app_state.generator.config = config
@@ -313,13 +345,14 @@ def create_generator_tab() -> gr.Tab:
                         info="Penalty for repeated tokens"
                     )
 
-                # Conditioning (planned but not implemented)
-                with gr.Accordion("Conditioning (Coming Soon)", open=False):
+                # Conditioning - Optional constraints for generation
+                with gr.Accordion("Conditioning", open=False):
                     key_dropdown = gr.Dropdown(
                         label="Key Signature",
                         choices=["Auto"] + MAJOR_KEYS + MINOR_KEYS,
                         value="Auto",
-                        interactive=False
+                        interactive=True,
+                        info="Generate music in a specific key (Auto = any key)"
                     )
 
                     tempo_slider = gr.Slider(
@@ -328,17 +361,19 @@ def create_generator_tab() -> gr.Tab:
                         maximum=140,
                         value=125,
                         step=1,
-                        interactive=False
+                        interactive=True,
+                        info="Target tempo for generation"
                     )
 
                     time_sig_dropdown = gr.Dropdown(
                         label="Time Signature",
                         choices=["Auto", "4/4", "6/8"],
                         value="Auto",
-                        interactive=False
+                        interactive=True,
+                        info="Time signature constraint (Auto = model decides)"
                     )
 
-                    gr.Markdown("*These features are structured in code but not yet implemented*")
+                    gr.Markdown("*Set to 'Auto' for unconditioned generation.*")
 
                 gr.Markdown("### Output Settings")
 
@@ -471,7 +506,10 @@ def create_generator_tab() -> gr.Tab:
                 top_p_slider,
                 repetition_penalty_slider,
                 max_bars_slider,
-                output_dir_textbox
+                output_dir_textbox,
+                key_dropdown,
+                tempo_slider,
+                time_sig_dropdown
             ],
             outputs=[
                 generation_status,

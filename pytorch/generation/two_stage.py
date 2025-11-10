@@ -103,7 +103,10 @@ class TwoStageGenerator:
         self,
         prompt_tokens: Optional[List[int]] = None,
         seed: Optional[int] = None,
-        temperature: Optional[float] = None
+        temperature: Optional[float] = None,
+        key_ids: Optional[torch.Tensor] = None,
+        tempo_values: Optional[torch.Tensor] = None,
+        time_sig_ids: Optional[torch.Tensor] = None
     ) -> List[int]:
         """
         Generate a complete music sequence using two-stage generation.
@@ -112,6 +115,9 @@ class TwoStageGenerator:
             prompt_tokens: Optional conditioning tokens to start with
             seed: Optional random seed for reproducibility
             temperature: Optional temperature override (uses config.temperature if None)
+            key_ids: Optional key signature conditioning tensor, shape [1]
+            tempo_values: Optional tempo conditioning tensor, shape [1]
+            time_sig_ids: Optional time signature conditioning tensor, shape [1]
 
         Returns:
             List of generated token IDs
@@ -126,7 +132,13 @@ class TwoStageGenerator:
 
         # Stage 1: Generate chord progression
         logger.info("Stage 1: Generating chord progression...")
-        chord_tokens = self._generate_chords(prompt_tokens, effective_temperature)
+        chord_tokens = self._generate_chords(
+            prompt_tokens,
+            effective_temperature,
+            key_ids,
+            tempo_values,
+            time_sig_ids
+        )
 
         logger.info(f"Stage 1 complete: {len(chord_tokens)} chord tokens generated")
 
@@ -156,7 +168,13 @@ class TwoStageGenerator:
 
         # Stage 2: Generate melody conditioned on chords
         logger.info("Stage 2: Generating melody...")
-        full_sequence = self._generate_melody(chord_tokens, effective_temperature)
+        full_sequence = self._generate_melody(
+            chord_tokens,
+            effective_temperature,
+            key_ids,
+            tempo_values,
+            time_sig_ids
+        )
 
         logger.info(f"Generation complete: {len(full_sequence)} total tokens")
 
@@ -165,7 +183,10 @@ class TwoStageGenerator:
     def _generate_chords(
         self,
         prompt_tokens: Optional[List[int]] = None,
-        temperature: Optional[float] = None
+        temperature: Optional[float] = None,
+        key_ids: Optional[torch.Tensor] = None,
+        tempo_values: Optional[torch.Tensor] = None,
+        time_sig_ids: Optional[torch.Tensor] = None
     ) -> List[int]:
         """
         Generate chord progression (Stage 1).
@@ -176,6 +197,9 @@ class TwoStageGenerator:
         Args:
             prompt_tokens: Optional conditioning tokens
             temperature: Temperature for sampling (uses config if None)
+            key_ids: Optional key signature conditioning tensor, shape [1]
+            tempo_values: Optional tempo conditioning tensor, shape [1]
+            time_sig_ids: Optional time signature conditioning tensor, shape [1]
 
         Returns:
             List of chord token IDs
@@ -208,8 +232,14 @@ class TwoStageGenerator:
                     logger.info(f"Chord generation stopped: {reason}")
                     break
 
-                # Forward pass through model
-                logits, _ = self.model(input_ids)
+                # Forward pass through model (with conditioning if available)
+                # Note: track_ids are None for generation (model adds them internally if needed)
+                logits, _ = self.model(
+                    input_ids,
+                    key_ids=key_ids,
+                    tempo_values=tempo_values,
+                    time_sig_ids=time_sig_ids
+                )
 
                 # Get logits for last token
                 next_token_logits = logits[:, -1, :]  # [1, vocab_size]
@@ -267,7 +297,10 @@ class TwoStageGenerator:
     def _generate_melody(
         self,
         chord_tokens: List[int],
-        temperature: Optional[float] = None
+        temperature: Optional[float] = None,
+        key_ids: Optional[torch.Tensor] = None,
+        tempo_values: Optional[torch.Tensor] = None,
+        time_sig_ids: Optional[torch.Tensor] = None
     ) -> List[int]:
         """
         Generate melody conditioned on chord progression (Stage 2).
@@ -277,6 +310,9 @@ class TwoStageGenerator:
         Args:
             chord_tokens: Generated chord tokens from Stage 1
             temperature: Temperature for sampling (uses config if None)
+            key_ids: Optional key signature conditioning tensor, shape [1]
+            tempo_values: Optional tempo conditioning tensor, shape [1]
+            time_sig_ids: Optional time signature conditioning tensor, shape [1]
 
         Returns:
             Complete sequence with chords and melody
@@ -313,8 +349,13 @@ class TwoStageGenerator:
                 if input_ids.size(1) > self.model.max_len:
                     input_ids = input_ids[:, -self.model.max_len:]
 
-                # Forward pass through model
-                logits, _ = self.model(input_ids)
+                # Forward pass through model (with conditioning if available)
+                logits, _ = self.model(
+                    input_ids,
+                    key_ids=key_ids,
+                    tempo_values=tempo_values,
+                    time_sig_ids=time_sig_ids
+                )
 
                 # Get logits for last token
                 next_token_logits = logits[:, -1, :]
