@@ -23,7 +23,12 @@ from .constants import (
     CORRIDOS_MELODY_PROGRAM,
     CORRIDOS_CHORD_PROGRAM,
     TOKEN_RANGES,
-    get_track_type_from_program
+    get_track_type_from_program,
+    # Conditioning constants
+    KEY_TO_ID,
+    TIME_SIG_TO_ID,
+    CONDITION_NONE_ID,
+    TEMPO_NONE_VALUE
 )
 
 
@@ -216,13 +221,62 @@ class MusicTokenDataset(Dataset):
         labels[-1] = -100  # Last position has no next token to predict
         labels[attention_mask == 0] = -100  # Ignore padding in loss calculation
 
+        # Extract conditioning information from metadata
+        metadata = data.get('metadata', {})
+
+        # Extract key signature
+        key_signature = metadata.get('key_signature', None)
+        if key_signature and key_signature in KEY_TO_ID:
+            key_id = KEY_TO_ID[key_signature]
+        else:
+            key_id = CONDITION_NONE_ID  # Default to "none" if missing or invalid
+
+        # Extract tempo (average across all tempo changes)
+        tempo_value = TEMPO_NONE_VALUE  # Default to 0.0 (none)
+        tempo_changes = metadata.get('tempo_changes', [])
+        if tempo_changes:
+            # Calculate weighted average tempo
+            total_time = 0
+            weighted_tempo = 0
+            for tempo_change in tempo_changes:
+                bpm = tempo_change.get('bpm', 0)
+                duration = tempo_change.get('duration_seconds', 0)
+                weighted_tempo += bpm * duration
+                total_time += duration
+
+            if total_time > 0:
+                tempo_value = weighted_tempo / total_time
+
+        # Extract time signature (use the first one, or most common if multiple)
+        time_sig_id = CONDITION_NONE_ID  # Default to "none"
+        time_signatures = metadata.get('time_signatures', [])
+        if time_signatures:
+            # Use the first time signature (most songs have one time sig throughout)
+            first_time_sig = time_signatures[0]
+            numerator = first_time_sig.get('numerator', 0)
+            denominator = first_time_sig.get('denominator', 0)
+            time_sig_tuple = (numerator, denominator)
+
+            if time_sig_tuple in TIME_SIG_TO_ID:
+                time_sig_id = TIME_SIG_TO_ID[time_sig_tuple]
+
+        # Convert conditioning values to tensors (scalars, not sequences)
+        key_id_tensor = torch.tensor(key_id, dtype=torch.long)
+        tempo_value_tensor = torch.tensor(tempo_value, dtype=torch.float32)
+        time_sig_id_tensor = torch.tensor(time_sig_id, dtype=torch.long)
+
         return {
             'input_ids': input_ids,
             'attention_mask': attention_mask,
             'track_ids': track_ids_tensor,
             'labels': labels,
+            # Conditioning tensors (per-batch scalars, not per-token)
+            'key_id': key_id_tensor,
+            'tempo_value': tempo_value_tensor,
+            'time_sig_id': time_sig_id_tensor,
+            # Metadata for reference
             'file_path': str(file_path),
-            'metadata': data.get('metadata', {})
+            'metadata': metadata
         }
 
     def get_statistics(self) -> Dict:

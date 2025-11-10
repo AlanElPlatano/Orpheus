@@ -55,6 +55,10 @@ class TrainingConfig:
     use_track_embeddings: bool = True  # Use track type embeddings (melody vs chord)
     num_track_types: int = 2  # Number of track types
 
+    # Conditional generation settings
+    use_conditioning: bool = False  # Use conditional generation embeddings (key, tempo, time sig)
+    conditioning_dropout: float = 0.2  # Probability of dropping conditions during training (for optional conditioning)
+
     # ========================================================================
     # Optimization settings
     # ========================================================================

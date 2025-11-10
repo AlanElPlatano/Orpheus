@@ -271,7 +271,8 @@ class MusicTransformer(nn.Module):
         max_len: int = CONTEXT_LENGTH,
         dropout: float = DROPOUT,
         use_track_embeddings: bool = True,
-        num_track_types: int = NUM_TRACK_TYPES
+        num_track_types: int = NUM_TRACK_TYPES,
+        use_conditioning: bool = False
     ):
         """
         Initialize music transformer.
@@ -286,6 +287,7 @@ class MusicTransformer(nn.Module):
             dropout: Dropout probability
             use_track_embeddings: Whether to use track type embeddings
             num_track_types: Number of track types
+            use_conditioning: Whether to use conditional generation embeddings
         """
         super().__init__()
 
@@ -297,15 +299,17 @@ class MusicTransformer(nn.Module):
         self.max_len = max_len
         self.dropout = dropout
         self.use_track_embeddings = use_track_embeddings
+        self.use_conditioning = use_conditioning
 
-        # Embedding layer (token + positional + track)
+        # Embedding layer (token + positional + track + conditioning)
         self.embedding = MusicEmbedding(
             vocab_size,
             hidden_dim,
             max_len,
             dropout,
             use_track_embeddings,
-            num_track_types
+            num_track_types,
+            use_conditioning
         )
 
         # Transformer blocks
@@ -346,6 +350,9 @@ class MusicTransformer(nn.Module):
         input_ids: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         track_ids: Optional[torch.Tensor] = None,
+        key_ids: Optional[torch.Tensor] = None,
+        tempo_values: Optional[torch.Tensor] = None,
+        time_sig_ids: Optional[torch.Tensor] = None,
         return_hidden_states: bool = False
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """
@@ -355,6 +362,9 @@ class MusicTransformer(nn.Module):
             input_ids: Token IDs, shape [batch_size, seq_len]
             attention_mask: Mask for padding, shape [batch_size, seq_len]
             track_ids: Track type IDs, shape [batch_size, seq_len] (optional)
+            key_ids: Key signature condition IDs, shape [batch_size] (optional)
+            tempo_values: Tempo condition values in BPM, shape [batch_size] (optional)
+            time_sig_ids: Time signature condition IDs, shape [batch_size] (optional)
             return_hidden_states: Whether to return final hidden states
 
         Returns:
@@ -362,8 +372,14 @@ class MusicTransformer(nn.Module):
             - logits: Output logits, shape [batch_size, seq_len, vocab_size]
             - hidden_states (optional): Final hidden states before LM head
         """
-        # Get embeddings (with track information if provided)
-        x = self.embedding(input_ids, track_ids)  # [batch_size, seq_len, hidden_dim]
+        # Get embeddings (with track and conditioning information if provided)
+        x = self.embedding(
+            input_ids,
+            track_ids,
+            key_ids,
+            tempo_values,
+            time_sig_ids
+        )  # [batch_size, seq_len, hidden_dim]
 
         # Apply transformer blocks
         for block in self.blocks:

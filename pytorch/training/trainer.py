@@ -30,6 +30,7 @@ from ..utils.logging_utils import (
     print_training_header, print_epoch_summary, print_progress
 )
 from ..data.vocab import load_vocabulary, VocabularyInfo
+from ..data.constants import CONDITION_NONE_ID, TEMPO_NONE_VALUE
 
 logger = logging.getLogger(__name__)
 
@@ -230,10 +231,39 @@ class Trainer:
                 # Pass track_ids if available
                 track_ids = batch.get('track_ids', None)
 
+                # Extract and apply conditioning dropout if enabled
+                key_ids = None
+                tempo_values = None
+                time_sig_ids = None
+
+                if self.config.use_conditioning:
+                    # Extract conditioning tensors from batch
+                    key_ids = batch.get('key_id', None)
+                    tempo_values = batch.get('tempo_value', None)
+                    time_sig_ids = batch.get('time_sig_id', None)
+
+                    # Apply conditioning dropout (randomly set conditions to "none")
+                    # This teaches the model to generate both with and without conditions
+                    if self.config.conditioning_dropout > 0 and self.model.training:
+                        dropout_mask = torch.rand(key_ids.size(0), device=self.device) < self.config.conditioning_dropout
+
+                        # Apply dropout to each conditioning type independently
+                        if key_ids is not None:
+                            key_ids = torch.where(dropout_mask, torch.tensor(CONDITION_NONE_ID, device=self.device), key_ids)
+
+                        if tempo_values is not None:
+                            tempo_values = torch.where(dropout_mask, torch.tensor(TEMPO_NONE_VALUE, device=self.device), tempo_values)
+
+                        if time_sig_ids is not None:
+                            time_sig_ids = torch.where(dropout_mask, torch.tensor(CONDITION_NONE_ID, device=self.device), time_sig_ids)
+
                 logits, _ = self.model(
                     input_ids=batch['input_ids'],
                     attention_mask=batch['attention_mask'],
-                    track_ids=track_ids
+                    track_ids=track_ids,
+                    key_ids=key_ids,
+                    tempo_values=tempo_values,
+                    time_sig_ids=time_sig_ids
                 )
 
                 # Compute loss (pass track_ids if using track-aware loss)
@@ -422,10 +452,23 @@ class Trainer:
                 # Pass track_ids if available
                 track_ids = batch.get('track_ids', None)
 
+                # Extract conditioning tensors if enabled (no dropout during validation)
+                key_ids = None
+                tempo_values = None
+                time_sig_ids = None
+
+                if self.config.use_conditioning:
+                    key_ids = batch.get('key_id', None)
+                    tempo_values = batch.get('tempo_value', None)
+                    time_sig_ids = batch.get('time_sig_id', None)
+
                 logits, _ = self.model(
                     input_ids=batch['input_ids'],
                     attention_mask=batch['attention_mask'],
-                    track_ids=track_ids
+                    track_ids=track_ids,
+                    key_ids=key_ids,
+                    tempo_values=tempo_values,
+                    time_sig_ids=time_sig_ids
                 )
 
                 # Compute loss (pass track_ids if using track-aware loss)

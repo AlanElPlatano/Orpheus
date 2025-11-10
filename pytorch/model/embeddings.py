@@ -19,7 +19,14 @@ from ..data.constants import (
     HIDDEN_DIM,
     CONTEXT_LENGTH,
     DROPOUT,
-    NUM_TRACK_TYPES
+    NUM_TRACK_TYPES,
+    NUM_KEY_CONDITIONS,
+    NUM_TIME_SIG_CONDITIONS,
+    TEMPO_EMBEDDING_DIM,
+    CONDITION_EMBED_DIM,
+    TEMPO_NONE_VALUE,
+    MIN_TEMPO_CONDITION,
+    MAX_TEMPO_CONDITION
 )
 
 
@@ -189,6 +196,122 @@ class TrackEmbedding(nn.Module):
         return self.embedding(track_ids)
 
 
+class ConditionEmbedding(nn.Module):
+    """
+    Conditional generation embedding layer that encodes key, tempo, and time signature.
+
+    This allows the model to generate music conditioned on specific musical characteristics:
+    - Key signature (e.g., C major, F# minor)
+    - Tempo (BPM, e.g., 125)
+    - Time signature (e.g., 4/4, 6/8)
+
+    Each condition can be independently specified or set to "none" for unconditioned generation.
+    """
+
+    def __init__(
+        self,
+        hidden_dim: int = HIDDEN_DIM,
+        condition_embed_dim: int = CONDITION_EMBED_DIM,
+        num_key_conditions: int = NUM_KEY_CONDITIONS,
+        num_time_sig_conditions: int = NUM_TIME_SIG_CONDITIONS,
+        tempo_embed_dim: int = TEMPO_EMBEDDING_DIM
+    ):
+        """
+        Initialize condition embeddings.
+
+        Args:
+            hidden_dim: Dimension to project final conditioning to (default: 512)
+            condition_embed_dim: Dimension for individual condition embeddings (default: 64)
+            num_key_conditions: Number of key options including "none" (default: 26)
+            num_time_sig_conditions: Number of time sig options including "none" (default: 10)
+            tempo_embed_dim: Dimension for tempo MLP hidden layer (default: 32)
+        """
+        super().__init__()
+
+        self.hidden_dim = hidden_dim
+        self.condition_embed_dim = condition_embed_dim
+
+        # Key signature embedding: discrete (C, Dm, F#, etc.)
+        # Maps key ID -> embedding vector
+        self.key_embedding = nn.Embedding(num_key_conditions, condition_embed_dim)
+
+        # Time signature embedding: discrete (4/4, 6/8, etc.)
+        # Maps time sig ID -> embedding vector
+        self.time_sig_embedding = nn.Embedding(num_time_sig_conditions, condition_embed_dim)
+
+        # Tempo embedding: continuous value -> MLP -> embedding
+        # Handles continuous BPM values (90-140)
+        self.tempo_mlp = nn.Sequential(
+            nn.Linear(1, tempo_embed_dim),  # 1D input (BPM value)
+            nn.ReLU(),
+            nn.Linear(tempo_embed_dim, condition_embed_dim)  # Project to condition_embed_dim
+        )
+
+        # Project combined conditions to model hidden dimension
+        # Concatenates all three condition embeddings (3 * condition_embed_dim) -> hidden_dim
+        self.projection = nn.Linear(3 * condition_embed_dim, hidden_dim)
+
+        # Initialize embeddings
+        nn.init.xavier_uniform_(self.key_embedding.weight)
+        nn.init.xavier_uniform_(self.time_sig_embedding.weight)
+
+        # Initialize MLP weights
+        for module in self.tempo_mlp:
+            if isinstance(module, nn.Linear):
+                nn.init.xavier_uniform_(module.weight)
+                nn.init.zeros_(module.bias)
+
+        # Initialize projection
+        nn.init.xavier_uniform_(self.projection.weight)
+        nn.init.zeros_(self.projection.bias)
+
+    def forward(
+        self,
+        key_ids: torch.Tensor,
+        tempo_values: torch.Tensor,
+        time_sig_ids: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Compute conditioning embeddings from key, tempo, and time signature.
+
+        Args:
+            key_ids: Key signature IDs, shape [batch_size]
+                    0 = "none" (unconditioned), 1-25 = specific keys
+            tempo_values: Tempo values in BPM, shape [batch_size]
+                         0.0 = "none" (unconditioned), 90-140 = specific tempo
+            time_sig_ids: Time signature IDs, shape [batch_size]
+                         0 = "none" (unconditioned), 1-9 = specific time sigs
+
+        Returns:
+            Conditioning embedding, shape [batch_size, hidden_dim]
+        """
+        # Get key embedding: [batch_size] -> [batch_size, condition_embed_dim]
+        key_emb = self.key_embedding(key_ids)
+
+        # Get time signature embedding: [batch_size] -> [batch_size, condition_embed_dim]
+        time_sig_emb = self.time_sig_embedding(time_sig_ids)
+
+        # Normalize tempo to [0, 1] range for better MLP performance
+        # tempo_values are either 0.0 (none) or 90-140 (actual tempo)
+        # We normalize non-zero values to [0, 1] range
+        tempo_normalized = torch.where(
+            tempo_values > 0,
+            (tempo_values - MIN_TEMPO_CONDITION) / (MAX_TEMPO_CONDITION - MIN_TEMPO_CONDITION),
+            torch.zeros_like(tempo_values)
+        )
+
+        # Get tempo embedding via MLP: [batch_size] -> [batch_size, 1] -> [batch_size, condition_embed_dim]
+        tempo_emb = self.tempo_mlp(tempo_normalized.unsqueeze(-1))
+
+        # Concatenate all condition embeddings: [batch_size, 3 * condition_embed_dim]
+        combined = torch.cat([key_emb, tempo_emb, time_sig_emb], dim=-1)
+
+        # Project to hidden dimension: [batch_size, hidden_dim]
+        conditioning = self.projection(combined)
+
+        return conditioning
+
+
 class MusicEmbedding(nn.Module):
     """
     Combined embedding layer for music tokens.
@@ -204,7 +327,8 @@ class MusicEmbedding(nn.Module):
         max_len: int = CONTEXT_LENGTH,
         dropout: float = DROPOUT,
         use_track_embeddings: bool = True,
-        num_track_types: int = NUM_TRACK_TYPES
+        num_track_types: int = NUM_TRACK_TYPES,
+        use_conditioning: bool = False
     ):
         """
         Initialize music embedding.
@@ -216,6 +340,7 @@ class MusicEmbedding(nn.Module):
             dropout: Dropout probability (default: 0.1)
             use_track_embeddings: Whether to include track type embeddings (default: True)
             num_track_types: Number of track types (default: 2)
+            use_conditioning: Whether to include conditional generation embeddings (default: False)
         """
         super().__init__()
 
@@ -223,6 +348,7 @@ class MusicEmbedding(nn.Module):
         self.hidden_dim = hidden_dim
         self.max_len = max_len
         self.use_track_embeddings = use_track_embeddings
+        self.use_conditioning = use_conditioning
 
         # Token embeddings
         self.token_embedding = TokenEmbedding(vocab_size, hidden_dim)
@@ -236,6 +362,12 @@ class MusicEmbedding(nn.Module):
         else:
             self.track_embedding = None
 
+        # Conditional generation embeddings (optional)
+        if use_conditioning:
+            self.condition_embedding = ConditionEmbedding(hidden_dim)
+        else:
+            self.condition_embedding = None
+
         # Scaling factor (as in original Transformer paper)
         # Helps stabilize training by preventing embeddings from being too large
         self.scale = math.sqrt(hidden_dim)
@@ -243,18 +375,27 @@ class MusicEmbedding(nn.Module):
     def forward(
         self,
         token_ids: torch.Tensor,
-        track_ids: Optional[torch.Tensor] = None
+        track_ids: Optional[torch.Tensor] = None,
+        key_ids: Optional[torch.Tensor] = None,
+        tempo_values: Optional[torch.Tensor] = None,
+        time_sig_ids: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         """
-        Convert token IDs to embeddings with positional and track information.
+        Convert token IDs to embeddings with positional, track, and conditioning information.
 
         Args:
             token_ids: Token IDs, shape [batch_size, seq_len]
             track_ids: Track type IDs, shape [batch_size, seq_len] (optional)
                       Each element is 0 (MELODY) or 1 (CHORD)
+            key_ids: Key signature condition IDs, shape [batch_size] (optional)
+                    0 = "none", 1-25 = specific keys
+            tempo_values: Tempo condition values in BPM, shape [batch_size] (optional)
+                         0.0 = "none", 90-140 = specific tempo
+            time_sig_ids: Time signature condition IDs, shape [batch_size] (optional)
+                         0 = "none", 1-9 = specific time signatures
 
         Returns:
-            Embeddings with positional and track encoding, shape [batch_size, seq_len, hidden_dim]
+            Embeddings with all encoding applied, shape [batch_size, seq_len, hidden_dim]
         """
         # Get token embeddings and scale them
         token_emb = self.token_embedding(token_ids) * self.scale
@@ -264,6 +405,18 @@ class MusicEmbedding(nn.Module):
             track_emb = self.track_embedding(track_ids)
             # Add track embeddings to token embeddings (similar to segment embeddings in BERT)
             token_emb = token_emb + track_emb
+
+        # Add conditioning if provided and enabled
+        if self.use_conditioning and key_ids is not None and tempo_values is not None and time_sig_ids is not None:
+            # Get conditioning embedding: [batch_size, hidden_dim]
+            condition_emb = self.condition_embedding(key_ids, tempo_values, time_sig_ids)
+
+            # Broadcast conditioning to all sequence positions: [batch_size, hidden_dim] -> [batch_size, 1, hidden_dim]
+            # Then broadcast to [batch_size, seq_len, hidden_dim] via addition
+            condition_emb = condition_emb.unsqueeze(1)
+
+            # Add conditioning to token embeddings
+            token_emb = token_emb + condition_emb
 
         # Add positional encoding (includes dropout)
         return self.positional_encoding(token_emb)
@@ -275,7 +428,8 @@ def get_embedding_layer(
     max_len: int = CONTEXT_LENGTH,
     dropout: float = DROPOUT,
     use_track_embeddings: bool = True,
-    num_track_types: int = NUM_TRACK_TYPES
+    num_track_types: int = NUM_TRACK_TYPES,
+    use_conditioning: bool = False
 ) -> MusicEmbedding:
     """
     Factory function to create a music embedding layer.
@@ -287,6 +441,7 @@ def get_embedding_layer(
         dropout: Dropout probability
         use_track_embeddings: Whether to include track type embeddings
         num_track_types: Number of track types
+        use_conditioning: Whether to include conditional generation embeddings
 
     Returns:
         MusicEmbedding layer ready to use
@@ -297,7 +452,8 @@ def get_embedding_layer(
         max_len,
         dropout,
         use_track_embeddings,
-        num_track_types
+        num_track_types,
+        use_conditioning
     )
 
 
@@ -305,6 +461,7 @@ __all__ = [
     'TokenEmbedding',
     'PositionalEncoding',
     'TrackEmbedding',
+    'ConditionEmbedding',
     'MusicEmbedding',
     'get_embedding_layer'
 ]

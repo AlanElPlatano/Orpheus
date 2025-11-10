@@ -208,6 +208,46 @@ CORRIDOS_DEFAULT_TEMPO = 125
 
 
 # ============================================================================
+# Conditioning Constants (for conditional generation)
+# ============================================================================
+
+# Special ID for "no condition" / "auto" / unconditioned generation
+CONDITION_NONE_ID = 0
+
+# Key conditioning: Map key signatures to IDs
+# ID 0 is reserved for "none", so keys start at ID 1
+ALL_KEYS = MAJOR_KEYS + MINOR_KEYS  # 25 keys total
+KEY_TO_ID: Dict[str, int] = {
+    key: idx + 1  # Start from 1, reserve 0 for "none"
+    for idx, key in enumerate(ALL_KEYS)
+}
+KEY_TO_ID['none'] = CONDITION_NONE_ID  # Explicit mapping for unconditioned
+ID_TO_KEY: Dict[int, str] = {v: k for k, v in KEY_TO_ID.items()}
+NUM_KEY_CONDITIONS = len(KEY_TO_ID)  # 26 total (25 keys + 1 none)
+
+# Time signature conditioning: Map time signatures to IDs
+# ID 0 is reserved for "none", so time sigs start at ID 1
+TIME_SIG_TO_ID: Dict[tuple, int] = {
+    time_sig: idx + 1  # Start from 1, reserve 0 for "none"
+    for idx, time_sig in enumerate(SUPPORTED_TIME_SIGNATURES)
+}
+TIME_SIG_TO_ID[(0, 0)] = CONDITION_NONE_ID  # Special tuple for "none"
+ID_TO_TIME_SIG: Dict[int, tuple] = {v: k for k, v in TIME_SIG_TO_ID.items()}
+NUM_TIME_SIG_CONDITIONS = len(TIME_SIG_TO_ID)  # 10 total (9 time sigs + 1 none)
+
+# Tempo conditioning: Continuous values (90-140 BPM for corridos)
+# We'll use an embedding layer that accepts continuous values
+# ID 0 still represents "no tempo condition"
+TEMPO_EMBEDDING_DIM = 32  # Dimension for tempo embedding MLP
+MIN_TEMPO_CONDITION = CORRIDOS_MIN_TEMPO  # 90 BPM
+MAX_TEMPO_CONDITION = CORRIDOS_MAX_TEMPO  # 140 BPM
+TEMPO_NONE_VALUE = 0.0  # Special value representing "no tempo condition"
+
+# Conditioning embedding dimensions
+CONDITION_EMBED_DIM = 64  # Dimension for each condition embedding
+
+
+# ============================================================================
 # Track Type Definitions
 # ============================================================================
 
@@ -469,6 +509,21 @@ __all__ = [
     # Corridos programs
     'CORRIDOS_MELODY_PROGRAM',
     'CORRIDOS_CHORD_PROGRAM',
+
+    # Conditioning constants
+    'CONDITION_NONE_ID',
+    'ALL_KEYS',
+    'KEY_TO_ID',
+    'ID_TO_KEY',
+    'NUM_KEY_CONDITIONS',
+    'TIME_SIG_TO_ID',
+    'ID_TO_TIME_SIG',
+    'NUM_TIME_SIG_CONDITIONS',
+    'TEMPO_EMBEDDING_DIM',
+    'MIN_TEMPO_CONDITION',
+    'MAX_TEMPO_CONDITION',
+    'TEMPO_NONE_VALUE',
+    'CONDITION_EMBED_DIM',
 
     # Utility functions
     'get_token_type',
