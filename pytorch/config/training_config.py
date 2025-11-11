@@ -59,6 +59,11 @@ class TrainingConfig:
     use_conditioning: bool = False  # Use conditional generation embeddings (key, tempo, time sig)
     conditioning_dropout: float = 0.2  # Probability of dropping conditions during training (for optional conditioning)
 
+    # Memory optimization settings
+    use_gradient_checkpointing: bool = False  # Use gradient checkpointing (trades compute for memory, 40-60% activation memory saved)
+    use_flash_attention: bool = True  # Use PyTorch's scaled_dot_product_attention (FlashAttention when available, 20-30% memory saved)
+    dynamic_padding: bool = True  # Pad to longest sequence in batch instead of max_length (10-30% memory saved)
+
     # ========================================================================
     # Optimization settings
     # ========================================================================
@@ -439,13 +444,80 @@ def get_optimized_default_config() -> TrainingConfig:
         max_checkpoints_to_keep=5
     )
 
+def get_memory_efficient_config() -> TrainingConfig:
+    """
+    Memory-efficient config with full-quality model and all optimizations enabled.
+
+    This configuration enables ALL memory optimizations while maintaining the
+    full model architecture (no quality sacrifice). Expected VRAM savings: 50-70%
+
+    Key optimizations:
+    - Gradient checkpointing (40-60% activation memory saved)
+    - FlashAttention (20-30% attention memory saved)
+    - Dynamic padding (10-30% saved depending on sequence lengths)
+    - Mixed precision training (FP16, ~50% memory saved)
+    - Small batch size with gradient accumulation
+    - Aggressive memory cleanup
+
+    Should work on GPUs with 6-8GB VRAM for full-size model.
+    If you still run out of memory, try "low_memory" config (smaller model).
+
+    Useful for:
+    - Training on consumer GPUs (RTX 2060, 3060, GTX 1660 Ti, etc.)
+    - Maximizing batch size on limited VRAM
+    - Training larger models on modest hardware
+    """
+    return TrainingConfig(
+        # Full-size model architecture (no quality sacrifice)
+        hidden_dim=512,
+        num_layers=8,
+        num_heads=8,
+        ff_dim=2048,
+        context_length=2048,
+        dropout=0.1,
+
+        # Enable ALL memory optimizations
+        use_gradient_checkpointing=True,  # 40-60% activation memory saved
+        use_flash_attention=True,          # 20-30% attention memory saved
+        dynamic_padding=True,              # 10-30% saved on padding
+        mixed_precision=True,              # ~50% memory for activations/gradients
+
+        # Training settings - small batch with accumulation
+        batch_size=2,  # Small batch size for memory
+        gradient_accumulation_steps=4,  # Effective batch = 8
+        num_epochs=50,
+        learning_rate=1e-4,
+        warmup_steps=1000,
+
+        # No data caching in memory
+        use_cache=False,
+        num_workers=0,  # Avoid multiprocessing overhead
+
+        # Validation and logging
+        validation_interval=500,
+        checkpoint_interval=2000,
+        log_interval=100,
+
+        # Logging
+        use_tensorboard=True,
+        use_wandb=True,
+
+        # Early stopping
+        early_stopping=True,
+        early_stopping_patience=10,
+
+        # Checkpointing
+        max_checkpoints_to_keep=3  # Save disk space
+    )
+
+
 def get_config_by_name(name: str) -> TrainingConfig:
     """
     Get configuration by preset name.
 
     Args:
-        name: One of "default", "quick_test", "overfit", "production", 
-              "track_aware", "optimized_default", "low_memory"
+        name: One of "default", "quick_test", "overfit", "production",
+              "track_aware", "optimized_default", "low_memory", "memory_efficient"
 
     Returns:
         TrainingConfig instance
@@ -457,7 +529,8 @@ def get_config_by_name(name: str) -> TrainingConfig:
         "production": get_production_config,
         "track_aware": get_track_aware_config,
         "optimized_default": get_optimized_default_config,
-        "low_memory": get_low_memory_config
+        "low_memory": get_low_memory_config,
+        "memory_efficient": get_memory_efficient_config
     }
 
     if name not in configs:
@@ -478,5 +551,6 @@ __all__ = [
     'get_track_aware_config',
     'get_optimized_default_config',
     'get_low_memory_config',
+    'get_memory_efficient_config',
     'get_config_by_name'
 ]

@@ -8,6 +8,7 @@ settings for training, validation, and testing.
 import torch
 from pathlib import Path
 from typing import Optional, Tuple
+from functools import partial
 from torch.utils.data import DataLoader, Dataset
 
 from .dataset import create_datasets, collate_fn, MusicTokenDataset
@@ -21,7 +22,8 @@ def create_dataloaders(
     num_workers: int = 0,
     use_cache: bool = False,
     shuffle_train: bool = True,
-    pin_memory: bool = True
+    pin_memory: bool = True,
+    dynamic_padding: bool = True
 ) -> Tuple[DataLoader, Optional[DataLoader], Optional[DataLoader]]:
     """
     Create DataLoaders for training, validation, and testing.
@@ -34,6 +36,7 @@ def create_dataloaders(
         use_cache: Whether to cache dataset in memory
         shuffle_train: Whether to shuffle training data
         pin_memory: Whether to pin memory for faster GPU transfer
+        dynamic_padding: If True, pad to longest sequence in batch (saves memory)
 
     Returns:
         Tuple of (train_loader, val_loader, test_loader)
@@ -46,6 +49,9 @@ def create_dataloaders(
         use_cache=use_cache
     )
 
+    # Create collate function with dynamic_padding parameter
+    collate_fn_with_padding = partial(collate_fn, dynamic_padding=dynamic_padding)
+
     # Create training DataLoader (if training set exists)
     train_loader = None
     if train_dataset and len(train_dataset) > 0:
@@ -54,7 +60,7 @@ def create_dataloaders(
             batch_size=batch_size,
             shuffle=shuffle_train,
             num_workers=num_workers,
-            collate_fn=collate_fn,
+            collate_fn=collate_fn_with_padding,
             pin_memory=pin_memory and torch.cuda.is_available(),
             drop_last=True  # Drop last incomplete batch for stable training
         )
@@ -67,7 +73,7 @@ def create_dataloaders(
             batch_size=batch_size,
             shuffle=False,  # Don't shuffle validation
             num_workers=num_workers,
-            collate_fn=collate_fn,
+            collate_fn=collate_fn_with_padding,
             pin_memory=pin_memory and torch.cuda.is_available(),
             drop_last=False  # Keep all validation samples
         )
@@ -80,7 +86,7 @@ def create_dataloaders(
             batch_size=batch_size,
             shuffle=False,  # Don't shuffle test
             num_workers=num_workers,
-            collate_fn=collate_fn,
+            collate_fn=collate_fn_with_padding,
             pin_memory=pin_memory and torch.cuda.is_available(),
             drop_last=False  # Keep all test samples
         )

@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional, Tuple
+from torch.utils.checkpoint import checkpoint
 
 from .embeddings import MusicEmbedding
 from ..data.constants import (
@@ -35,7 +36,8 @@ class MultiHeadAttention(nn.Module):
         self,
         hidden_dim: int = HIDDEN_DIM,
         num_heads: int = NUM_HEADS,
-        dropout: float = DROPOUT
+        dropout: float = DROPOUT,
+        use_flash_attention: bool = True
     ):
         """
         Initialize multi-head attention.
@@ -44,6 +46,8 @@ class MultiHeadAttention(nn.Module):
             hidden_dim: Dimension of hidden states (must be divisible by num_heads)
             num_heads: Number of attention heads
             dropout: Dropout probability
+            use_flash_attention: Whether to use PyTorch's scaled_dot_product_attention
+                                (FlashAttention when available, more memory efficient)
         """
         super().__init__()
 
@@ -53,6 +57,7 @@ class MultiHeadAttention(nn.Module):
         self.hidden_dim = hidden_dim
         self.num_heads = num_heads
         self.head_dim = hidden_dim // num_heads
+        self.use_flash_attention = use_flash_attention
 
         # Linear projections for Q, K, V: Query, Key, Value
         self.q_proj = nn.Linear(hidden_dim, hidden_dim)
@@ -65,8 +70,9 @@ class MultiHeadAttention(nn.Module):
         # Dropout layers
         self.attn_dropout = nn.Dropout(dropout)
         self.resid_dropout = nn.Dropout(dropout)
+        self.dropout = dropout
 
-        # Scaling factor for attention scores
+        # Scaling factor for attention scores (only used in manual attention)
         self.scale = self.head_dim ** -0.5
 
     def forward(
@@ -105,33 +111,56 @@ class MultiHeadAttention(nn.Module):
         k = k.transpose(1, 2)
         v = v.transpose(1, 2)
 
-        # Compute attention scores: [batch_size, num_heads, seq_len, seq_len]
-        attn_scores = torch.matmul(q, k.transpose(-2, -1)) * self.scale
+        # Use PyTorch's optimized scaled_dot_product_attention if available (PyTorch 2.0+)
+        # This uses FlashAttention when possible, which is much more memory efficient
+        if self.use_flash_attention and hasattr(F, 'scaled_dot_product_attention'):
+            # Prepare attention mask for scaled_dot_product_attention
+            # It expects: [batch_size, num_heads, seq_len, seq_len] or broadcastable
+            attn_mask = None
+            if attention_mask is not None:
+                # Convert padding mask to attention mask
+                # attention_mask is [batch_size, seq_len], we need [batch_size, 1, 1, seq_len]
+                attn_mask = attention_mask.unsqueeze(1).unsqueeze(2)
+                # Convert to float and set padding positions to -inf
+                attn_mask = attn_mask.float().masked_fill(attn_mask == 0, float('-inf'))
+                attn_mask = attn_mask.masked_fill(attn_mask == 1, 0.0)
 
-        # Apply causal mask (prevent attending to future tokens)
-        if causal_mask:
-            # Create lower triangular matrix
-            causal_mask_matrix = torch.tril(
-                torch.ones(seq_len, seq_len, device=x.device, dtype=torch.bool)
+            # scaled_dot_product_attention handles causal masking internally
+            attn_output = F.scaled_dot_product_attention(
+                q, k, v,
+                attn_mask=attn_mask,
+                dropout_p=self.dropout if self.training else 0.0,
+                is_causal=causal_mask and attention_mask is None  # Only use is_causal if no custom mask
             )
-            attn_scores = attn_scores.masked_fill(~causal_mask_matrix, float('-inf'))
+        else:
+            # Fall back to manual attention computation
+            # Compute attention scores: [batch_size, num_heads, seq_len, seq_len]
+            attn_scores = torch.matmul(q, k.transpose(-2, -1)) * self.scale
 
-        # Apply padding mask if provided
-        if attention_mask is not None:
-            # Reshape attention_mask: [batch_size, 1, 1, seq_len]
-            attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
-            # Mask out padding positions
-            attn_scores = attn_scores.masked_fill(attention_mask == 0, float('-inf'))
+            # Apply causal mask (prevent attending to future tokens)
+            if causal_mask:
+                # Create lower triangular matrix
+                causal_mask_matrix = torch.tril(
+                    torch.ones(seq_len, seq_len, device=x.device, dtype=torch.bool)
+                )
+                attn_scores = attn_scores.masked_fill(~causal_mask_matrix, float('-inf'))
 
-        # Compute attention weights (softmax over key dimension)
-        attn_weights = F.softmax(attn_scores, dim=-1)
+            # Apply padding mask if provided
+            if attention_mask is not None:
+                # Reshape attention_mask: [batch_size, 1, 1, seq_len]
+                attention_mask_reshaped = attention_mask.unsqueeze(1).unsqueeze(2)
+                # Mask out padding positions
+                attn_scores = attn_scores.masked_fill(attention_mask_reshaped == 0, float('-inf'))
 
-        # Apply dropout to attention weights
-        attn_weights = self.attn_dropout(attn_weights)
+            # Compute attention weights (softmax over key dimension)
+            attn_weights = F.softmax(attn_scores, dim=-1)
 
-        # Apply attention to values
-        # [batch_size, num_heads, seq_len, head_dim]
-        attn_output = torch.matmul(attn_weights, v)
+            # Apply dropout to attention weights
+            attn_weights = self.attn_dropout(attn_weights)
+
+            # Apply attention to values
+            # [batch_size, num_heads, seq_len, head_dim]
+            attn_output = torch.matmul(attn_weights, v)
 
         # Transpose back: [batch_size, seq_len, num_heads, head_dim]
         attn_output = attn_output.transpose(1, 2)
@@ -207,7 +236,8 @@ class TransformerBlock(nn.Module):
         hidden_dim: int = HIDDEN_DIM,
         num_heads: int = NUM_HEADS,
         ff_dim: int = FF_DIM,
-        dropout: float = DROPOUT
+        dropout: float = DROPOUT,
+        use_flash_attention: bool = True
     ):
         """
         Initialize transformer block.
@@ -217,11 +247,12 @@ class TransformerBlock(nn.Module):
             num_heads: Number of attention heads
             ff_dim: Dimension of feed-forward layer
             dropout: Dropout probability
+            use_flash_attention: Whether to use FlashAttention-compatible attention
         """
         super().__init__()
 
         # Multi-head attention
-        self.attention = MultiHeadAttention(hidden_dim, num_heads, dropout)
+        self.attention = MultiHeadAttention(hidden_dim, num_heads, dropout, use_flash_attention)
 
         # Feed-forward network
         self.feed_forward = FeedForward(hidden_dim, ff_dim, dropout)
@@ -272,7 +303,9 @@ class MusicTransformer(nn.Module):
         dropout: float = DROPOUT,
         use_track_embeddings: bool = True,
         num_track_types: int = NUM_TRACK_TYPES,
-        use_conditioning: bool = False
+        use_conditioning: bool = False,
+        use_gradient_checkpointing: bool = False,
+        use_flash_attention: bool = True
     ):
         """
         Initialize music transformer.
@@ -288,6 +321,8 @@ class MusicTransformer(nn.Module):
             use_track_embeddings: Whether to use track type embeddings
             num_track_types: Number of track types
             use_conditioning: Whether to use conditional generation embeddings
+            use_gradient_checkpointing: Whether to use gradient checkpointing (saves memory)
+            use_flash_attention: Whether to use FlashAttention-compatible attention (saves memory)
         """
         super().__init__()
 
@@ -300,6 +335,7 @@ class MusicTransformer(nn.Module):
         self.dropout = dropout
         self.use_track_embeddings = use_track_embeddings
         self.use_conditioning = use_conditioning
+        self.use_gradient_checkpointing = use_gradient_checkpointing
 
         # Embedding layer (token + positional + track + conditioning)
         self.embedding = MusicEmbedding(
@@ -314,7 +350,7 @@ class MusicTransformer(nn.Module):
 
         # Transformer blocks
         self.blocks = nn.ModuleList([
-            TransformerBlock(hidden_dim, num_heads, ff_dim, dropout)
+            TransformerBlock(hidden_dim, num_heads, ff_dim, dropout, use_flash_attention)
             for _ in range(num_layers)
         ])
 
@@ -381,9 +417,24 @@ class MusicTransformer(nn.Module):
             time_sig_ids
         )  # [batch_size, seq_len, hidden_dim]
 
-        # Apply transformer blocks
-        for block in self.blocks:
-            x = block(x, attention_mask)
+        # Apply transformer blocks with optional gradient checkpointing
+        # Gradient checkpointing trades compute for memory by not storing
+        # intermediate activations during forward pass, recomputing them during backward
+        if self.use_gradient_checkpointing and self.training:
+            # Use gradient checkpointing (memory efficient but slower)
+            for block in self.blocks:
+                # checkpoint requires a function that takes tensors and returns tensors
+                # We create a wrapper function that calls the block
+                def create_custom_forward(module):
+                    def custom_forward(*inputs):
+                        return module(*inputs)
+                    return custom_forward
+
+                x = checkpoint(create_custom_forward(block), x, attention_mask, use_reentrant=False)
+        else:
+            # Normal forward pass (faster but uses more memory)
+            for block in self.blocks:
+                x = block(x, attention_mask)
 
         # Apply final layer norm
         x = self.ln_f(x)
@@ -497,7 +548,9 @@ def create_model(
     max_len: int = CONTEXT_LENGTH,
     dropout: float = DROPOUT,
     use_track_embeddings: bool = True,
-    num_track_types: int = NUM_TRACK_TYPES
+    num_track_types: int = NUM_TRACK_TYPES,
+    use_gradient_checkpointing: bool = False,
+    use_flash_attention: bool = True
 ) -> MusicTransformer:
     """
     Factory function to create a MusicTransformer model.
@@ -512,6 +565,8 @@ def create_model(
         dropout: Dropout probability
         use_track_embeddings: Whether to use track type embeddings
         num_track_types: Number of track types
+        use_gradient_checkpointing: Whether to use gradient checkpointing (saves memory)
+        use_flash_attention: Whether to use FlashAttention-compatible attention (saves memory)
 
     Returns:
         MusicTransformer model
@@ -525,7 +580,9 @@ def create_model(
         max_len=max_len,
         dropout=dropout,
         use_track_embeddings=use_track_embeddings,
-        num_track_types=num_track_types
+        num_track_types=num_track_types,
+        use_gradient_checkpointing=use_gradient_checkpointing,
+        use_flash_attention=use_flash_attention
     )
 
 

@@ -308,14 +308,15 @@ class Trainer:
                 # Scheduler step
                 self.scheduler.step()
 
-                # Zero gradients
-                self.optimizer.zero_grad()
+                # Zero gradients (set_to_none=True is more memory efficient)
+                self.optimizer.zero_grad(set_to_none=True)
 
                 # Update global step
                 self.global_step += 1
 
-                # Periodic memory cleanup to prevent accumulation
-                if self.global_step % 100 == 0 and self.device.type == "cuda":
+                # More aggressive memory cleanup to prevent VRAM accumulation
+                # Clean up more frequently (every 50 steps instead of 100)
+                if self.global_step % 50 == 0 and self.device.type == "cuda":
                     torch.cuda.empty_cache()
                     gc.collect()
 
@@ -381,9 +382,11 @@ class Trainer:
                     finally:
                         # Always return to training mode, even if validation fails
                         self.model.train()
-                        # Clear CUDA cache after validation to free memory
+                        # Aggressive memory cleanup after validation to free memory
                         if self.device.type == "cuda":
                             torch.cuda.empty_cache()
+                            torch.cuda.synchronize()
+                            gc.collect()
 
                 # Save checkpoint
                 if not self.config.save_best_only and \
@@ -408,6 +411,10 @@ class Trainer:
                         self.config.checkpoint_dir,
                         max_to_keep=self.config.max_checkpoints_to_keep
                     )
+
+                    # Memory cleanup after checkpoint save
+                    if self.device.type == "cuda":
+                        torch.cuda.empty_cache()
 
                 # Check max steps
                 if self.config.max_steps is not None and \

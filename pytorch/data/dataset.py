@@ -416,7 +416,7 @@ class CachedMusicTokenDataset(MusicTokenDataset):
         return self.cache[idx]
 
 
-def collate_fn(batch: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
+def collate_fn(batch: List[Dict[str, torch.Tensor]], dynamic_padding: bool = True) -> Dict[str, torch.Tensor]:
     """
     Custom collate function for batching samples.
 
@@ -425,6 +425,8 @@ def collate_fn(batch: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
 
     Args:
         batch: List of sample dictionaries from __getitem__
+        dynamic_padding: If True, pad to longest sequence in batch instead of max_length.
+                        Saves memory but sequences have different lengths across batches.
 
     Returns:
         Batched dictionary with tensors of shape [batch_size, seq_len]
@@ -435,13 +437,37 @@ def collate_fn(batch: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
     track_ids = [item['track_ids'] for item in batch]
     labels = [item['labels'] for item in batch]
 
-    # Stack tensors (they should all be the same length if pad_to_max_length=True)
+    # If dynamic padding is enabled and sequences have different lengths, repad them
+    if dynamic_padding:
+        # Find actual sequence lengths (before padding)
+        seq_lengths = [mask.sum().item() for mask in attention_masks]
+        max_len_in_batch = max(seq_lengths)
+
+        # Check if we can reduce padding
+        current_len = input_ids[0].size(0)
+        if max_len_in_batch < current_len:
+            # Truncate all sequences to max_len_in_batch
+            input_ids = [ids[:max_len_in_batch] for ids in input_ids]
+            attention_masks = [mask[:max_len_in_batch] for mask in attention_masks]
+            track_ids = [tracks[:max_len_in_batch] for tracks in track_ids]
+            labels = [lbls[:max_len_in_batch] for lbls in labels]
+
+    # Stack tensors (they should all be the same length now)
     batched = {
         'input_ids': torch.stack(input_ids),
         'attention_mask': torch.stack(attention_masks),
         'track_ids': torch.stack(track_ids),
         'labels': torch.stack(labels)
     }
+
+    # Extract conditioning tensors (per-batch scalars)
+    key_ids = torch.stack([item['key_id'] for item in batch])
+    tempo_values = torch.stack([item['tempo_value'] for item in batch])
+    time_sig_ids = torch.stack([item['time_sig_id'] for item in batch])
+
+    batched['key_id'] = key_ids
+    batched['tempo_value'] = tempo_values
+    batched['time_sig_id'] = time_sig_ids
 
     # Keep metadata as list (not batched)
     batched['metadata'] = [item['metadata'] for item in batch]

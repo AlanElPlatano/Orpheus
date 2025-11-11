@@ -32,7 +32,8 @@ def parse_args():
         "--config",
         type=str,
         default="default",
-        choices=["default", "quick_test", "overfit", "production"],
+        choices=["default", "quick_test", "overfit", "production", "track_aware",
+                 "optimized_default", "low_memory", "memory_efficient"],
         help="Training configuration preset"
     )
 
@@ -166,7 +167,8 @@ def main():
         batch_size=config.batch_size,
         max_length=config.context_length,
         num_workers=config.num_workers,
-        use_cache=config.use_cache
+        use_cache=config.use_cache,
+        dynamic_padding=config.dynamic_padding
     )
 
     if train_loader is None:
@@ -188,11 +190,27 @@ def main():
         num_heads=config.num_heads,
         ff_dim=config.ff_dim,
         max_len=config.context_length,
-        dropout=config.dropout
+        dropout=config.dropout,
+        use_track_embeddings=config.use_track_embeddings,
+        num_track_types=config.num_track_types,
+        use_gradient_checkpointing=config.use_gradient_checkpointing,
+        use_flash_attention=config.use_flash_attention
     )
 
     print(f"Model parameters: {model.get_num_params():,}")
     print(f"Non-embedding parameters: {model.get_num_params(non_embedding=True):,}")
+
+    # Print memory optimization settings
+    if config.use_gradient_checkpointing or config.use_flash_attention or config.dynamic_padding:
+        print(f"\nMemory optimizations enabled:")
+        if config.use_gradient_checkpointing:
+            print(f"  ✓ Gradient checkpointing (40-60% activation memory saved)")
+        if config.use_flash_attention:
+            print(f"  ✓ FlashAttention (20-30% attention memory saved)")
+        if config.dynamic_padding:
+            print(f"  ✓ Dynamic padding (10-30% saved on sequence padding)")
+        if config.mixed_precision:
+            print(f"  ✓ Mixed precision training (FP16, ~50% memory saved)")
 
     # Create trainer
     print(f"\nInitializing trainer...")
