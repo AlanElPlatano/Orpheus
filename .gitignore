@@ -16,6 +16,7 @@
 
 __pycache__/
 /validation_reports
+/temp
 
 # PyTorch data splits
 /pytorch/data/splits/

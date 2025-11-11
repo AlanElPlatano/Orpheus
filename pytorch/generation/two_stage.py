@@ -180,6 +180,82 @@ class TwoStageGenerator:
 
         return full_sequence
 
+    def generate_melody_from_chords(
+        self,
+        chord_tokens: List[int],
+        seed: Optional[int] = None,
+        temperature: Optional[float] = None,
+        key_ids: Optional[torch.Tensor] = None,
+        tempo_values: Optional[torch.Tensor] = None,
+        time_sig_ids: Optional[torch.Tensor] = None
+    ) -> List[int]:
+        """
+        Generate melody on top of user-provided chord tokens (skip Stage 1).
+
+        This method allows users to provide their own chord progression and
+        generates only the melody on top of it, bypassing the chord generation stage.
+
+        Args:
+            chord_tokens: User-provided chord token sequence
+            seed: Optional random seed for reproducibility
+            temperature: Optional temperature override (uses config.temperature if None)
+            key_ids: Optional key signature conditioning tensor, shape [1]
+            tempo_values: Optional tempo conditioning tensor, shape [1]
+            time_sig_ids: Optional time signature conditioning tensor, shape [1]
+
+        Returns:
+            List of generated token IDs (chords + melody)
+
+        Raises:
+            ValueError: If chord_tokens is empty or too long for melody generation
+        """
+        if not chord_tokens:
+            raise ValueError("chord_tokens cannot be empty")
+
+        if seed is not None:
+            torch.manual_seed(seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed(seed)
+
+        # Use provided temperature or fall back to config
+        effective_temperature = temperature if temperature is not None else self.config.temperature
+
+        # Validate chord sequence length
+        # Reserve space for melody generation (25% of context length)
+        melody_reservation = max(int(self.config.max_length * 0.25), 64)
+        max_chord_context = self.config.max_length - melody_reservation
+
+        # Sanity check: ensure we have at least some space for chords
+        if max_chord_context < 32:
+            raise ValueError(
+                f"Context length ({self.config.max_length}) is too small for two-stage generation. "
+                f"Need at least {melody_reservation + 32} tokens."
+            )
+
+        if len(chord_tokens) > max_chord_context:
+            raise ValueError(
+                f"Chord sequence too long ({len(chord_tokens)} tokens). "
+                f"Maximum allowed: {max_chord_context} tokens to reserve space for melody generation. "
+                f"Please use a shorter chord progression."
+            )
+
+        logger.info(f"Using user-provided chord tokens: {len(chord_tokens)} tokens")
+        logger.info(f"Remaining space for melody: {max_chord_context - len(chord_tokens)} tokens")
+
+        # Generate melody conditioned on user chords
+        logger.info("Generating melody on top of user-provided chords...")
+        full_sequence = self._generate_melody(
+            chord_tokens,
+            effective_temperature,
+            key_ids,
+            tempo_values,
+            time_sig_ids
+        )
+
+        logger.info(f"Generation complete: {len(full_sequence)} total tokens")
+
+        return full_sequence
+
     def _generate_chords(
         self,
         prompt_tokens: Optional[List[int]] = None,
