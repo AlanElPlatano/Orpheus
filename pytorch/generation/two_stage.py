@@ -20,6 +20,8 @@ from ..data.constants import (
     BAR_TOKEN_ID,
     TRACK_TYPE_MELODY,
     TRACK_TYPE_CHORD,
+    TOKEN_RANGES,
+    get_track_type_from_program,
     is_pitch_token,
     is_duration_token
 )
@@ -98,6 +100,47 @@ class TwoStageGenerator:
                 logger.warning(f"Could not parse pitch from token: {token_name}")
 
         return pitch_mapping
+
+    def _generate_track_ids(self, tokens: List[int], default_track_type: int = TRACK_TYPE_MELODY) -> torch.Tensor:
+        """
+        Generate track IDs for a token sequence.
+
+        Analyzes the token sequence to determine which track (melody or chord)
+        each token belongs to, based on Program tokens. This matches the logic
+        used during training in dataset.py.
+
+        Args:
+            tokens: List of token IDs
+            default_track_type: Default track type if no Program token is found (default: TRACK_TYPE_MELODY)
+
+        Returns:
+            Tensor of track type IDs, shape [1, seq_len]
+        """
+        program_start, program_end = TOKEN_RANGES['program']
+
+        # Track the current track type
+        current_track_type = default_track_type
+        track_ids = []
+
+        for token in tokens:
+            # Check if this is a Program token
+            if program_start <= token <= program_end:
+                # Extract program number from token
+                # Program tokens are Program_0 to Program_127 and Program_-1
+                # Token IDs: 266-394
+                # Program_0 is 266, Program_127 is 393, Program_-1 is 394
+                if token == 394:  # Program_-1
+                    program_num = -1
+                else:
+                    program_num = token - 266
+
+                # Update current track type based on program
+                current_track_type = get_track_type_from_program(program_num)
+
+            track_ids.append(current_track_type)
+
+        # Convert to tensor with batch dimension
+        return torch.tensor([track_ids], dtype=torch.long, device=self.device)
 
     def generate_complete_sequence(
         self,
@@ -308,10 +351,14 @@ class TwoStageGenerator:
                     logger.info(f"Chord generation stopped: {reason}")
                     break
 
-                # Forward pass through model (with conditioning if available)
-                # Note: track_ids are None for generation (model adds them internally if needed)
+                # Generate track IDs for current sequence
+                # For chord generation, default to TRACK_TYPE_CHORD
+                track_ids_tensor = self._generate_track_ids(generated_tokens, default_track_type=TRACK_TYPE_CHORD)
+
+                # Forward pass through model (with track_ids and conditioning if available)
                 logits, _ = self.model(
                     input_ids,
+                    track_ids=track_ids_tensor,
                     key_ids=key_ids,
                     tempo_values=tempo_values,
                     time_sig_ids=time_sig_ids
@@ -424,10 +471,17 @@ class TwoStageGenerator:
                 # Truncate input if it exceeds context length
                 if input_ids.size(1) > self.model.max_len:
                     input_ids = input_ids[:, -self.model.max_len:]
+                    # Also need to truncate generated_tokens to match
+                    generated_tokens = generated_tokens[-self.model.max_len:]
 
-                # Forward pass through model (with conditioning if available)
+                # Generate track IDs for current sequence
+                # For melody generation, default to TRACK_TYPE_MELODY
+                track_ids_tensor = self._generate_track_ids(generated_tokens, default_track_type=TRACK_TYPE_MELODY)
+
+                # Forward pass through model (with track_ids and conditioning if available)
                 logits, _ = self.model(
                     input_ids,
+                    track_ids=track_ids_tensor,
                     key_ids=key_ids,
                     tempo_values=tempo_values,
                     time_sig_ids=time_sig_ids
