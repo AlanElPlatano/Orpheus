@@ -1,6 +1,10 @@
-# Orpheus - A basic songwriter AI
+# Orpheus
 
-This project is a basic songwriter AI, aimed at producing MIDI files with melody tracks and chord (harmony) tracks, intended to be used as a simple songwriting tool for musicians, producers, and (of course) songwriters.
+<p align="center">
+  <img src="assets/logo.png" alt="Orpheus logo" width="250">
+</p>
+
+A basic songwriter AI, aimed at producing MIDI files with melody tracks and chord (harmony) tracks, intended to be used as a simple songwriting tool for musicians, producers, and (of course) songwriters.
 
 This AI is supposed to take MIDI files in their most basic structure, being a monophonic melody track and a chord track with no rhythmic variation, with chords being sustained all the way until the next one starts. For proper function of the AI, your training files will have to look something like this:
 
@@ -258,11 +262,27 @@ We also get generation settings, where we can choose between three modes:
 - **Creative (Experimental)**: Uses Temperature 1.1, Top-p 0.92, Repetition Penalty 1.05. Produces more varied, experimental outputs with higher randomness.
 - **Custom**: Allows you to manually adjust the sampling parameters to your preference.
 
-Below it we get options for conditional generation, this feature is not implemented yet so it doesn't have an impact on the generated files.
+Below it we get options for conditional generation:
+
+![Screenshot of the conditioning options in the generator tab](assets/conditioning.png "Generator Tab")
+
+Here we can apply constraints to the generated files using a model, all settings are optional so you can use any combination of them and the model will be able to generate files following these guides.
 
 And at the bottom we get some output options, where we can define the number of generated files and max length. Right below these options we get the 'Generated Music', which will use the model to generate some files, this process should only take a few minutes depending on how many files you are generating.
 
 If everything up to this point went well, you should have your generated MIDI files in the output path. You can import these files into any MIDI software (Reaper, Guitar Pro, Sybellius, Tux Guitar, Pro Tools, etc) and you will have your music. Enjoy!
+
+---
+
+### Custom Chords Tab
+
+![Screenshot of the Custom chords tab in the Gradio GUI](assets/custom_chords.png "Custom Chords Tab")
+
+This is a very interesting tab as it allows the user to provide existing MIDI files with a chord progression and use a trained model to generate melodies on top of it.
+
+- When you upload a file, some metadata like key, BPM and Time Signature are read for context, this information is given to the user for verification on the Verify section, this will be used as constraints to generate the melody on top of the given chord progression.
+
+- Similarly to the generation tab, we get generation settings and output settings, to further customize the output files
 
 ## Contributing
 Contributions and bug reports are welcome. Please submit issues and pull requests through the GitHub repository.
