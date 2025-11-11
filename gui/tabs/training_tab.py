@@ -140,9 +140,14 @@ def load_training_config(preset_name: str) -> Tuple[Dict[str, Any], str]:
             'num_epochs': config.num_epochs,
             'warmup_steps': config.warmup_steps,
 
+            # Memory optimization settings
+            'use_gradient_checkpointing': config.use_gradient_checkpointing,
+            'use_flash_attention': config.use_flash_attention,
+            'use_dynamic_padding': config.dynamic_padding,
+            'use_mixed_precision': config.mixed_precision,
+
             # Basic advanced settings
             'gradient_accumulation': config.gradient_accumulation_steps,
-            'use_mixed_precision': config.mixed_precision,
             'early_stopping': config.early_stopping,
             'validation_interval': config.validation_interval,
 
@@ -225,9 +230,13 @@ def start_training_session(
     learning_rate: float,
     num_epochs: int,
     warmup_steps: int,
+    # Memory optimization settings
+    use_gradient_checkpointing: bool,
+    use_flash_attention: bool,
+    use_dynamic_padding: bool,
+    use_mixed_precision: bool,
     # Basic advanced settings
     gradient_accumulation: int,
-    use_mixed_precision: bool,
     early_stopping: bool,
     validation_interval: int,
     # Model architecture
@@ -345,9 +354,14 @@ def start_training_session(
         config.num_epochs = num_epochs
         config.warmup_steps = warmup_steps
 
+        # Memory optimization settings
+        config.use_gradient_checkpointing = use_gradient_checkpointing
+        config.use_flash_attention = use_flash_attention
+        config.dynamic_padding = use_dynamic_padding
+        config.mixed_precision = use_mixed_precision
+
         # Basic advanced settings
         config.gradient_accumulation_steps = gradient_accumulation
-        config.mixed_precision = use_mixed_precision
         config.early_stopping = early_stopping
         config.validation_interval = validation_interval
 
@@ -427,7 +441,8 @@ def start_training_session(
             batch_size=config.batch_size,
             max_length=config.context_length,
             num_workers=config.num_workers,
-            use_cache=config.use_cache
+            use_cache=config.use_cache,
+            dynamic_padding=config.dynamic_padding
         )
 
         if train_loader is None:
@@ -441,7 +456,11 @@ def start_training_session(
             num_heads=config.num_heads,
             ff_dim=config.ff_dim,
             max_len=config.context_length,
-            dropout=config.dropout
+            dropout=config.dropout,
+            use_track_embeddings=config.use_track_embeddings,
+            num_track_types=config.num_track_types,
+            use_gradient_checkpointing=config.use_gradient_checkpointing,
+            use_flash_attention=config.use_flash_attention
         )
 
         # Create GradioTrainer
@@ -747,9 +766,13 @@ def load_checkpoint_for_training(
                 'learning_rate': saved_config.get('learning_rate', 1e-4),
                 'num_epochs': saved_config.get('num_epochs', 50),
                 'warmup_steps': saved_config.get('warmup_steps', 1000),
+                # Memory optimization settings
+                'use_gradient_checkpointing': saved_config.get('use_gradient_checkpointing', False),
+                'use_flash_attention': saved_config.get('use_flash_attention', True),
+                'use_dynamic_padding': saved_config.get('dynamic_padding', True),
+                'use_mixed_precision': saved_config.get('mixed_precision', True),
                 # Basic advanced settings
                 'gradient_accumulation': saved_config.get('gradient_accumulation_steps', 1),
-                'use_mixed_precision': saved_config.get('mixed_precision', True),
                 'early_stopping': saved_config.get('early_stopping', True),
                 'validation_interval': saved_config.get('validation_interval', 500),
                 # Model architecture
@@ -859,9 +882,10 @@ def create_training_tab() -> gr.Tab:
                 # Preset selector
                 preset_dropdown = gr.Dropdown(
                     label="Training Preset",
-                    choices=["default", "quick_test", "overfit", "production", "optimized_default", "low_memory"],
+                    choices=["default", "quick_test", "overfit", "production", "track_aware",
+                             "optimized_default", "low_memory (smaller model)", "memory_efficient"],
                     value="default",
-                    info="Select a preset configuration (use 'low_memory' for 4GB VRAM or less)"
+                    info="Select a preset configuration (use 'memory_efficient' for 6-8GB VRAM, 'low_memory' for 4GB)"
                 )
 
                 load_preset_btn = gr.Button("Load Preset", size="sm")
@@ -910,6 +934,35 @@ def create_training_tab() -> gr.Tab:
                         info="LR warmup steps"
                     )
 
+                gr.Markdown("### 🧠 Memory Optimization")
+                gr.Markdown("*Enable these to reduce VRAM usage (50-70% savings with all enabled)*")
+
+                with gr.Row():
+                    use_gradient_checkpointing_checkbox = gr.Checkbox(
+                        label="Gradient Checkpointing",
+                        value=False,
+                        info="40-60% activation memory saved (trades ~20% speed)"
+                    )
+
+                    use_flash_attention_checkbox = gr.Checkbox(
+                        label="FlashAttention",
+                        value=True,
+                        info="20-30% attention memory saved (faster!)"
+                    )
+
+                with gr.Row():
+                    use_dynamic_padding_checkbox = gr.Checkbox(
+                        label="Dynamic Padding",
+                        value=True,
+                        info="10-30% saved on sequence padding"
+                    )
+
+                    use_mixed_precision_checkbox = gr.Checkbox(
+                        label="Mixed Precision (FP16)",
+                        value=True,
+                        info="~50% memory saved (faster on modern GPUs)"
+                    )
+
                 with gr.Accordion("Advanced Settings", open=False):
                     gradient_accumulation_slider = gr.Slider(
                         label="Gradient Accumulation Steps",
@@ -918,12 +971,6 @@ def create_training_tab() -> gr.Tab:
                         value=1,
                         step=1,
                         info="Simulate larger batches"
-                    )
-
-                    use_mixed_precision_checkbox = gr.Checkbox(
-                        label="Use Mixed Precision (FP16)",
-                        value=True,
-                        info="Faster training with FP16"
                     )
 
                     early_stopping_checkbox = gr.Checkbox(
@@ -1412,9 +1459,13 @@ def create_training_tab() -> gr.Tab:
                     config_dict['learning_rate'],
                     config_dict['num_epochs'],
                     config_dict['warmup_steps'],
+                    # Memory optimization settings
+                    config_dict['use_gradient_checkpointing'],
+                    config_dict['use_flash_attention'],
+                    config_dict['use_dynamic_padding'],
+                    config_dict['use_mixed_precision'],
                     # Basic advanced settings
                     config_dict['gradient_accumulation'],
-                    config_dict['use_mixed_precision'],
                     config_dict['early_stopping'],
                     config_dict['validation_interval'],
                     # Model architecture
@@ -1484,9 +1535,13 @@ def create_training_tab() -> gr.Tab:
                 learning_rate_input,
                 num_epochs_slider,
                 warmup_steps_slider,
+                # Memory optimization settings
+                use_gradient_checkpointing_checkbox,
+                use_flash_attention_checkbox,
+                use_dynamic_padding_checkbox,
+                use_mixed_precision_checkbox,
                 # Basic advanced settings
                 gradient_accumulation_slider,
-                use_mixed_precision_checkbox,
                 early_stopping_checkbox,
                 validation_interval_slider,
                 # Model architecture
@@ -1557,9 +1612,13 @@ def create_training_tab() -> gr.Tab:
                 learning_rate_input,
                 num_epochs_slider,
                 warmup_steps_slider,
+                # Memory optimization settings
+                use_gradient_checkpointing_checkbox,
+                use_flash_attention_checkbox,
+                use_dynamic_padding_checkbox,
+                use_mixed_precision_checkbox,
                 # Basic advanced settings
                 gradient_accumulation_slider,
-                use_mixed_precision_checkbox,
                 early_stopping_checkbox,
                 validation_interval_slider,
                 # Model architecture
@@ -1650,9 +1709,13 @@ def create_training_tab() -> gr.Tab:
                     config_updates['learning_rate'],
                     config_updates['num_epochs'],
                     config_updates['warmup_steps'],
+                    # Memory optimization settings
+                    config_updates['use_gradient_checkpointing'],
+                    config_updates['use_flash_attention'],
+                    config_updates['use_dynamic_padding'],
+                    config_updates['use_mixed_precision'],
                     # Basic advanced settings
                     config_updates['gradient_accumulation'],
-                    config_updates['use_mixed_precision'],
                     config_updates['early_stopping'],
                     config_updates['validation_interval'],
                     # Model architecture
@@ -1722,9 +1785,13 @@ def create_training_tab() -> gr.Tab:
                 learning_rate_input,
                 num_epochs_slider,
                 warmup_steps_slider,
+                # Memory optimization settings
+                use_gradient_checkpointing_checkbox,
+                use_flash_attention_checkbox,
+                use_dynamic_padding_checkbox,
+                use_mixed_precision_checkbox,
                 # Basic advanced settings
                 gradient_accumulation_slider,
-                use_mixed_precision_checkbox,
                 early_stopping_checkbox,
                 validation_interval_slider,
                 # Model architecture
