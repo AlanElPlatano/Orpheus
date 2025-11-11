@@ -46,6 +46,11 @@ class AppState:
         self.generation_results: List[Dict[str, Any]] = []
         self.generation_active = False
         self.generator_loaded = False
+
+        # Custom chord generation state
+        self.custom_chord_tokens: Optional[List[int]] = None
+        self.custom_chord_metadata: Optional[Any] = None  # ChordMetadata instance
+        self.custom_chord_file: Optional[str] = None
     
     def initialize_parser(self, mode: str, compress: bool) -> None:
         """
