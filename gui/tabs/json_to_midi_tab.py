@@ -333,7 +333,7 @@ def process_json_batch(
 """
 
     for i, result in enumerate(results, 1):
-        status_icon = "" if result["success"] else ""
+        status_icon = "✅" if result["success"] else "❌"
         summary += f"\n{i}. {status_icon} **{result['json_file']}**"
         if result["success"]:
             summary += f" → `{result['midi_file']}` ({result['processing_time']:.1f}s)"

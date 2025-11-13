@@ -71,18 +71,15 @@ def calculate_new_key(original_key: str, semitones: int) -> str:
     """
     is_minor = original_key.endswith('m')
 
+    # Select the appropriate circle based on major/minor
     if is_minor:
-        key_root = original_key[:-1]
         circle = KEY_CIRCLE_MINOR
     else:
-        key_root = original_key
         circle = KEY_CIRCLE
 
+    # Find the current key's position in the circle
     try:
-        if is_minor:
-            current_index = circle.index(original_key)
-        else:
-            current_index = circle.index(original_key)
+        current_index = circle.index(original_key)
     except ValueError:
         logger.warning(f"Key '{original_key}' not found in circle. Returning original.")
         return original_key
