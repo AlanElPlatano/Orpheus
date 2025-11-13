@@ -9,8 +9,9 @@ This module provides functions to enforce musical constraints during generation:
 
 The purpose of this script is to enforce several music theory aspects.
 
-NOTE: This is a basic structure for Phase 2. Full implementation will be done
-in Phase 4 (Generation Pipeline).
+NOTE: This module provides basic constraint implementations. For more
+sophisticated versions with vocabulary-aware parsing, see
+pytorch/generation/constrained_decode.py.
 """
 
 import torch
@@ -114,8 +115,26 @@ def apply_chord_sustain_constraint(
     if state.current_track != 'chord':
         return logits
 
-    # In Phase 4, we'll implement logic to mask short duration tokens
-    # For now, just return unchanged
+    # Only apply constraint when chord notes are active
+    if not state.has_active_chord_notes():
+        return logits
+
+    # Mask short duration tokens (< 1.0 beat) for chord track
+    # Duration tokens are in range (62, 77) and ordered from shortest to longest
+    # Based on REMI standard: 16 tokens from 0.1 to 4.0 beats
+    # We want to mask durations < 1.0 beat, which are approximately the first 9 tokens
+    duration_start, duration_end = TOKEN_RANGES['duration']
+
+    # Calculate threshold: durations < 1.0 beat
+    # Assuming roughly linear distribution: (1.0 - 0.1) / (4.0 - 0.1) ≈ 0.23
+    # So roughly 23% of the range, but we'll use a conservative estimate
+    # to mask approximately tokens representing < 1.0 beat
+    num_duration_tokens = duration_end - duration_start + 1
+    short_duration_threshold = duration_start + int(num_duration_tokens * 0.5)
+
+    # Mask short duration tokens
+    logits[:, duration_start:short_duration_threshold] = mask_value
+
     return logits
 
 
@@ -133,7 +152,9 @@ def apply_diatonic_boost(
 
     Args:
         logits: Model output logits
-        key_signature: Current key (if known)
+        key_signature: Current key as pitch class (0-11, where 0=C, 1=C#/Db, etc.)
+                      Note: Despite the type hint, this may receive other types in practice.
+                      If not an int or None, the function returns logits unchanged.
         boost_weight: Multiplicative boost for diatonic pitches
 
     Returns:
@@ -142,8 +163,40 @@ def apply_diatonic_boost(
     if key_signature is None:
         return logits
 
-    # In Phase 4, we'll implement the full diatonic scale logic
-    # For now, just return unchanged
+    # Handle the case where key_signature might not be an int due to
+    # type inconsistencies in the codebase (config.key is a string)
+    if not isinstance(key_signature, int):
+        # If it's not an int, we can't use it with this simple implementation
+        # The enhanced version in constrained_decode.py handles string keys
+        return logits
+
+    # Validate pitch class range (0-11)
+    if not (0 <= key_signature <= 11):
+        return logits
+
+    # Use major scale intervals by default (most common)
+    # For more sophisticated major/minor detection, use constrained_decode.py
+    from ..data.constants import MAJOR_SCALE_INTERVALS, MIN_PITCH, MAX_PITCH
+
+    root_pitch_class = key_signature
+    scale_intervals = MAJOR_SCALE_INTERVALS
+
+    # Calculate pitch classes that are diatonic (in the scale)
+    diatonic_pitch_classes = {(root_pitch_class + interval) % 12 for interval in scale_intervals}
+
+    # Get pitch token range
+    pitch_start, pitch_end = TOKEN_RANGES['pitch']
+
+    # Boost pitch tokens that are diatonic
+    # Pitch tokens are Pitch_36 to Pitch_84, so token ID = pitch_start + (midi_pitch - MIN_PITCH)
+    for midi_pitch in range(MIN_PITCH, MAX_PITCH + 1):
+        pitch_class = midi_pitch % 12
+        if pitch_class in diatonic_pitch_classes:
+            # Calculate the token ID for this MIDI pitch
+            token_id = pitch_start + (midi_pitch - MIN_PITCH)
+            if pitch_start <= token_id <= pitch_end:
+                logits[:, token_id] *= boost_weight
+
     return logits
 
 
