@@ -549,6 +549,7 @@ def create_model(
     dropout: float = DROPOUT,
     use_track_embeddings: bool = True,
     num_track_types: int = NUM_TRACK_TYPES,
+    use_conditioning: bool = False,
     use_gradient_checkpointing: bool = False,
     use_flash_attention: bool = True
 ) -> MusicTransformer:
@@ -565,6 +566,7 @@ def create_model(
         dropout: Dropout probability
         use_track_embeddings: Whether to use track type embeddings
         num_track_types: Number of track types
+        use_conditioning: Whether to use conditional generation embeddings
         use_gradient_checkpointing: Whether to use gradient checkpointing (saves memory)
         use_flash_attention: Whether to use FlashAttention-compatible attention (saves memory)
 
@@ -581,6 +583,7 @@ def create_model(
         dropout=dropout,
         use_track_embeddings=use_track_embeddings,
         num_track_types=num_track_types,
+        use_conditioning=use_conditioning,
         use_gradient_checkpointing=use_gradient_checkpointing,
         use_flash_attention=use_flash_attention
     )
