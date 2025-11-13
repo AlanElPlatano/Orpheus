@@ -157,7 +157,8 @@ class MusicGenerator:
                 max_len=model_config['max_len'],
                 dropout=model_config.get('dropout', 0.1),
                 use_track_embeddings=model_config.get('use_track_embeddings', False),
-                num_track_types=model_config.get('num_track_types', 2)
+                num_track_types=model_config.get('num_track_types', 2),
+                use_conditioning=model_config.get('use_conditioning', False)
             )
 
             # Load model weights
