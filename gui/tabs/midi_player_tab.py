@@ -30,7 +30,7 @@ def get_midi_files(directory: str) -> List[str]:
         directory: Path to directory to search
 
     Returns:
-        List of MIDI file paths (relative to directory)
+        List of MIDI file paths (relative to directory), sorted alphabetically
     """
     try:
         dir_path = Path(directory)
@@ -43,8 +43,8 @@ def get_midi_files(directory: str) -> List[str]:
         for pattern in ['*.mid', '*.midi']:
             midi_files.extend(dir_path.glob(pattern))
 
-        # Sort by modification time (newest first)
-        midi_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        # Sort alphabetically
+        midi_files.sort(key=lambda p: p.name.lower())
 
         # Return just the filenames
         return [f.name for f in midi_files]
@@ -162,10 +162,14 @@ def create_midi_player_html(base64_data: str, filename: str) -> str:
     <head>
         <meta charset="UTF-8">
         <style>
+            * {{
+                box-sizing: border-box;
+            }}
+
             body {{
                 margin: 0;
                 padding: 20px;
-                font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
                 background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                 min-height: 100vh;
             }}
@@ -173,10 +177,11 @@ def create_midi_player_html(base64_data: str, filename: str) -> str:
             .player-container {{
                 max-width: 1000px;
                 margin: 0 auto;
-                background: white;
+                background: #ffffff;
                 border-radius: 16px;
                 padding: 30px;
                 box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                color: #333333;
             }}
 
             .header {{
@@ -186,14 +191,19 @@ def create_midi_player_html(base64_data: str, filename: str) -> str:
 
             .header h2 {{
                 margin: 0 0 10px 0;
-                color: #333;
+                color: #1f2937;
                 font-size: 24px;
+                font-weight: 600;
             }}
 
             .filename {{
-                color: #666;
+                color: #6b7280;
                 font-size: 14px;
-                font-family: monospace;
+                font-family: 'Courier New', monospace;
+                background: #f3f4f6;
+                padding: 8px 16px;
+                border-radius: 6px;
+                display: inline-block;
             }}
 
             midi-player {{
@@ -210,18 +220,19 @@ def create_midi_player_html(base64_data: str, filename: str) -> str:
                 width: 100%;
                 height: 400px;
                 border-radius: 8px;
-                background: #1a1a1a;
+                background: #1a1a2e;
                 margin-top: 20px;
             }}
 
             .info {{
                 margin-top: 20px;
                 padding: 15px;
-                background: #f8f9fa;
+                background: #f0fdf4;
                 border-radius: 8px;
                 font-size: 13px;
-                color: #666;
+                color: #166534;
                 text-align: center;
+                border: 1px solid #86efac;
             }}
         </style>
 
@@ -290,9 +301,12 @@ def load_and_display_midi(
     try:
         if not filename or filename == "No MIDI files found":
             empty_html = """
-            <div style="padding: 40px; text-align: center; color: #666;">
-                <p style="font-size: 18px;">📂 No file selected</p>
-                <p>Select a MIDI file from the list to preview it</p>
+            <div style="padding: 60px; text-align: center; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px;">
+                <div style="background: white; padding: 40px; border-radius: 8px; display: inline-block;">
+                    <p style="font-size: 48px; margin: 0 0 20px 0;">📂</p>
+                    <p style="font-size: 18px; color: #1f2937; margin: 0 0 10px 0; font-weight: 600;">No file selected</p>
+                    <p style="font-size: 14px; color: #6b7280; margin: 0;">Select a MIDI file from the dropdown to preview it</p>
+                </div>
             </div>
             """
             return empty_html, "No file selected", "Ready"
@@ -302,9 +316,12 @@ def load_and_display_midi(
 
         if base64_data is None:
             error_html = f"""
-            <div style="padding: 40px; text-align: center; color: #d32f2f;">
-                <p style="font-size: 18px;">❌ Error loading file</p>
-                <p>Could not load {filename}</p>
+            <div style="padding: 60px; text-align: center; background: #fee; border-radius: 12px;">
+                <div style="background: white; padding: 40px; border-radius: 8px; display: inline-block; border: 2px solid #ef4444;">
+                    <p style="font-size: 48px; margin: 0 0 20px 0;">❌</p>
+                    <p style="font-size: 18px; color: #991b1b; margin: 0 0 10px 0; font-weight: 600;">Error loading file</p>
+                    <p style="font-size: 14px; color: #7f1d1d; margin: 0;">Could not load {filename}</p>
+                </div>
             </div>
             """
             return error_html, "Error loading file", f"Error: Could not load {filename}"
@@ -322,9 +339,12 @@ def load_and_display_midi(
     except Exception as e:
         logger.error(f"Error in load_and_display_midi: {e}", exc_info=True)
         error_html = f"""
-        <div style="padding: 40px; text-align: center; color: #d32f2f;">
-            <p style="font-size: 18px;">❌ Error</p>
-            <p>{str(e)}</p>
+        <div style="padding: 60px; text-align: center; background: #fee; border-radius: 12px;">
+            <div style="background: white; padding: 40px; border-radius: 8px; display: inline-block; border: 2px solid #ef4444;">
+                <p style="font-size: 48px; margin: 0 0 20px 0;">❌</p>
+                <p style="font-size: 18px; color: #991b1b; margin: 0 0 10px 0; font-weight: 600;">Error</p>
+                <p style="font-size: 14px; color: #7f1d1d; margin: 0; font-family: monospace;">{str(e)}</p>
+            </div>
         </div>
         """
         return error_html, f"Error: {str(e)}", f"Error: {str(e)}"
@@ -359,12 +379,13 @@ def create_midi_player_tab() -> gr.Tab:
                 with gr.Row():
                     refresh_btn = gr.Button("🔄 Refresh", size="sm")
 
-                # File list
-                file_list = gr.Radio(
-                    label="Available MIDI Files",
+                # File list - dropdown for clean file explorer feel
+                file_list = gr.Dropdown(
+                    label="Select MIDI File",
                     choices=[],
                     value=None,
-                    interactive=True
+                    interactive=True,
+                    info="Files are sorted alphabetically"
                 )
 
                 gr.Markdown("---")
@@ -389,9 +410,12 @@ def create_midi_player_tab() -> gr.Tab:
                 # MIDI Player (embedded HTML)
                 player_html = gr.HTML(
                     value="""
-                    <div style="padding: 60px; text-align: center; color: #999; background: #f5f5f5; border-radius: 8px;">
-                        <p style="font-size: 24px; margin-bottom: 10px;">🎹</p>
-                        <p style="font-size: 16px;">Select a MIDI file to start playing</p>
+                    <div style="padding: 60px; text-align: center; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px;">
+                        <div style="background: white; padding: 40px; border-radius: 8px; display: inline-block;">
+                            <p style="font-size: 48px; margin: 0 0 20px 0;">🎹</p>
+                            <p style="font-size: 18px; color: #1f2937; margin: 0 0 10px 0; font-weight: 600;">MIDI Player Ready</p>
+                            <p style="font-size: 14px; color: #6b7280; margin: 0;">Select a file from the dropdown to start playing</p>
+                        </div>
                     </div>
                     """
                 )
