@@ -21,6 +21,7 @@ from ..data.constants import (
     EOS_TOKEN_ID,
     PAD_TOKEN_ID
 )
+from .chord_sustain import apply_chord_sustain
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +137,10 @@ def tokens_to_midi(
                 os.unlink(tmp_path)
             except Exception as e:
                 logger.warning(f"Could not delete temporary file {tmp_path}: {e}")
+
+        # Apply chord sustain post-processing
+        # This extends chord durations to the start of the next chord
+        midi = apply_chord_sustain(midi)
 
         # Ensure output directory exists
         output_path.parent.mkdir(parents=True, exist_ok=True)
