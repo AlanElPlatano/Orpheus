@@ -18,7 +18,8 @@ from gui.tabs import (
     create_json_to_midi_tab,
     create_training_tab,
     create_generator_tab,
-    create_custom_chords_tab
+    create_custom_chords_tab,
+    create_midi_player_tab
 )
 
 
@@ -47,6 +48,7 @@ def create_interface() -> gr.Blocks:
             create_training_tab()
             create_generator_tab()
             create_custom_chords_tab()
+            create_midi_player_tab()
             create_json_to_midi_tab()
         
         # Footer
