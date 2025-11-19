@@ -157,114 +157,144 @@ def create_midi_player_html(base64_data: str, filename: str) -> str:
         HTML string with embedded MIDI player
     """
     html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <style>
-            * {{
-                box-sizing: border-box;
-            }}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        * {{
+            box-sizing: border-box !important;
+        }}
 
-            body {{
-                margin: 0;
-                padding: 20px;
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                min-height: 100vh;
-            }}
+        body {{
+            margin: 0 !important;
+            padding: 20px !important;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif !important;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+            min-height: 100vh !important;
+        }}
 
-            .player-container {{
-                max-width: 1000px;
-                margin: 0 auto;
-                background: #ffffff;
-                border-radius: 16px;
-                padding: 30px;
-                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-                color: #333333;
-            }}
+        .player-container {{
+            max-width: 1000px !important;
+            margin: 0 auto !important;
+            background: #ffffff !important;
+            border-radius: 16px !important;
+            padding: 30px !important;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3) !important;
+        }}
 
-            .header {{
-                text-align: center;
-                margin-bottom: 30px;
-            }}
+        .header {{
+            text-align: center !important;
+            margin-bottom: 30px !important;
+        }}
 
-            .header h2 {{
-                margin: 0 0 10px 0;
-                color: #1f2937;
-                font-size: 24px;
-                font-weight: 600;
-            }}
+        .header h2 {{
+            margin: 0 0 10px 0 !important;
+            color: #1f2937 !important;
+            font-size: 24px !important;
+            font-weight: 600 !important;
+        }}
 
-            .filename {{
-                color: #6b7280;
-                font-size: 14px;
-                font-family: 'Courier New', monospace;
-                background: #f3f4f6;
-                padding: 8px 16px;
-                border-radius: 6px;
-                display: inline-block;
-            }}
+        .filename {{
+            color: #6b7280 !important;
+            font-size: 14px !important;
+            font-family: 'Courier New', monospace !important;
+            background: #f3f4f6 !important;
+            padding: 8px 16px !important;
+            border-radius: 6px !important;
+            display: inline-block !important;
+        }}
 
-            midi-player {{
-                display: block;
-                width: 100%;
-                margin: 20px 0;
-                border-radius: 8px;
-                overflow: hidden;
-                background: #f5f5f5;
-            }}
+        midi-player {{
+            display: block !important;
+            width: 100% !important;
+            margin: 20px 0 !important;
+            border-radius: 8px !important;
+            overflow: hidden !important;
+            background: #f5f5f5 !important;
+            min-height: 60px !important;
+        }}
 
-            midi-visualizer {{
-                display: block;
-                width: 100%;
-                height: 400px;
-                border-radius: 8px;
-                background: #1a1a2e;
-                margin-top: 20px;
-            }}
+        midi-visualizer {{
+            display: block !important;
+            width: 100% !important;
+            height: 400px !important;
+            border-radius: 8px !important;
+            background: #1a1a2e !important;
+            margin-top: 20px !important;
+        }}
 
-            .info {{
-                margin-top: 20px;
-                padding: 15px;
-                background: #f0fdf4;
-                border-radius: 8px;
-                font-size: 13px;
-                color: #166534;
-                text-align: center;
-                border: 1px solid #86efac;
-            }}
-        </style>
+        .info {{
+            margin-top: 20px !important;
+            padding: 15px !important;
+            background: #f0fdf4 !important;
+            border-radius: 8px !important;
+            font-size: 13px !important;
+            color: #166534 !important;
+            text-align: center !important;
+            border: 1px solid #86efac !important;
+        }}
 
-        <!-- Load html-midi-player from CDN -->
-        <script src="https://cdn.jsdelivr.net/combine/npm/tone@14.7.58,npm/@magenta/music@1.23.1/es6/core.js,npm/focus-visible@5,npm/html-midi-player@1.5.0"></script>
-    </head>
-    <body>
-        <div class="player-container">
-            <div class="header">
-                <h2>🎹 MIDI Player</h2>
-                <div class="filename">{filename}</div>
-            </div>
-
-            <!-- MIDI Player Controls -->
-            <midi-player
-                src="data:audio/midi;base64,{base64_data}"
-                sound-font
-                visualizer="#myVisualizer">
-            </midi-player>
-
-            <!-- Piano Roll Visualizer -->
-            <midi-visualizer
-                type="piano-roll"
-                id="myVisualizer">
-            </midi-visualizer>
-
-            <div class="info">
-                🎵 Use the controls above to play, pause, and seek through the MIDI file
-            </div>
+        .loading {{
+            text-align: center !important;
+            padding: 20px !important;
+            color: #666 !important;
+            font-size: 14px !important;
+        }}
+    </style>
+</head>
+<body>
+    <div class="player-container">
+        <div class="header">
+            <h2>🎹 MIDI Player</h2>
+            <div class="filename">{filename}</div>
         </div>
-    </body>
-    </html>
+
+        <div class="loading" id="loading">Loading MIDI player libraries...</div>
+
+        <!-- MIDI Player Controls -->
+        <midi-player
+            id="midiPlayer"
+            src="data:audio/midi;base64,{base64_data}"
+            sound-font
+            visualizer="#myVisualizer"
+            style="display: none;">
+        </midi-player>
+
+        <!-- Piano Roll Visualizer -->
+        <midi-visualizer
+            type="piano-roll"
+            id="myVisualizer"
+            style="display: none;">
+        </midi-visualizer>
+
+        <div class="info">
+            🎵 Use the controls above to play, pause, and seek through the MIDI file
+        </div>
+    </div>
+
+    <!-- Load html-midi-player from CDN -->
+    <script src="https://cdn.jsdelivr.net/combine/npm/tone@14.7.58,npm/@magenta/music@1.23.1/es6/core.js,npm/focus-visible@5,npm/html-midi-player@1.5.0"></script>
+
+    <script>
+        // Wait for the player to load
+        setTimeout(function() {{
+            var player = document.getElementById('midiPlayer');
+            var visualizer = document.getElementById('myVisualizer');
+            var loading = document.getElementById('loading');
+
+            if (player && visualizer) {{
+                player.style.display = 'block';
+                visualizer.style.display = 'block';
+                loading.style.display = 'none';
+            }} else {{
+                loading.innerHTML = '❌ Failed to load MIDI player. External scripts may be blocked.';
+                loading.style.color = '#d32f2f';
+            }}
+        }}, 2000);
+    </script>
+</body>
+</html>
     """
 
     return html
