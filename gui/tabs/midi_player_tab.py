@@ -7,9 +7,8 @@ for previewing generated MIDI files.
 
 import sys
 import gradio as gr
-import base64
 from pathlib import Path
-from typing import Tuple, List, Optional
+from typing import Tuple, List, Optional, Dict, Any
 import logging
 
 # Add parent directories to path
@@ -52,39 +51,6 @@ def get_midi_files(directory: str) -> List[str]:
     except Exception as e:
         logger.error(f"Error listing MIDI files: {e}")
         return []
-
-
-def load_midi_as_base64(directory: str, filename: str) -> Optional[str]:
-    """
-    Load a MIDI file and encode it as base64.
-
-    Args:
-        directory: Directory containing the MIDI file
-        filename: Name of the MIDI file
-
-    Returns:
-        Base64-encoded MIDI data, or None if error
-    """
-    try:
-        file_path = Path(directory) / filename
-
-        if not file_path.exists():
-            logger.error(f"File not found: {file_path}")
-            return None
-
-        with open(file_path, 'rb') as f:
-            midi_data = f.read()
-
-        # Encode to base64
-        base64_data = base64.b64encode(midi_data).decode('utf-8')
-
-        logger.info(f"Loaded MIDI file: {filename} ({len(midi_data)} bytes)")
-
-        return base64_data
-
-    except Exception as e:
-        logger.error(f"Error loading MIDI file: {e}")
-        return None
 
 
 def get_midi_metadata(directory: str, filename: str) -> str:
@@ -145,17 +111,81 @@ def get_midi_metadata(directory: str, filename: str) -> str:
         return f"Error reading file: {str(e)}"
 
 
-def create_midi_player_html(base64_data: str, filename: str) -> str:
+def extract_midi_notes(midi_path: Path) -> Dict[str, Any]:
     """
-    Create HTML for the MIDI player with visualization.
+    Extract note data from MIDI file for visualization.
 
     Args:
-        base64_data: Base64-encoded MIDI data
+        midi_path: Path to MIDI file
+
+    Returns:
+        Dictionary with note data and metadata
+    """
+    try:
+        from miditoolkit import MidiFile
+
+        midi = MidiFile(str(midi_path))
+
+        notes = []
+        for track_idx, instrument in enumerate(midi.instruments):
+            for note in instrument.notes:
+                notes.append({
+                    'pitch': note.pitch,
+                    'start': note.start / midi.ticks_per_beat,  # Convert to beats
+                    'end': note.end / midi.ticks_per_beat,
+                    'velocity': note.velocity,
+                    'track': track_idx,
+                    'instrument': instrument.name or f"Track {track_idx}"
+                })
+
+        # Calculate duration in beats
+        if notes:
+            duration = max(n['end'] for n in notes)
+        else:
+            duration = 0
+
+        return {
+            'notes': notes,
+            'duration': duration,
+            'tempo': midi.tempo_changes[0].tempo if midi.tempo_changes else 120,
+            'ticks_per_beat': midi.ticks_per_beat
+        }
+
+    except Exception as e:
+        logger.error(f"Error extracting MIDI notes: {e}")
+        return {'notes': [], 'duration': 0, 'tempo': 120, 'ticks_per_beat': 480}
+
+
+def create_midi_player_html(midi_path: Path, filename: str) -> str:
+    """
+    Create HTML for the MIDI player with visualization.
+    Uses inline JavaScript to bypass CSP restrictions.
+
+    Args:
+        midi_path: Path to MIDI file
         filename: Name of the file (for display)
 
     Returns:
         HTML string with embedded MIDI player
     """
+
+    # Extract note data from MIDI
+    midi_data = extract_midi_notes(midi_path)
+
+    # Read the inline player JavaScript
+    player_js_path = Path(__file__).parent.parent / "static" / "midi-player" / "inline-midi-player.js"
+
+    if player_js_path.exists():
+        with open(player_js_path, 'r') as f:
+            player_js = f.read()
+    else:
+        # Fallback if file doesn't exist
+        player_js = "console.error('Player JavaScript not found');"
+
+    # Convert Python data to JSON for JavaScript
+    import json
+    midi_data_json = json.dumps(midi_data)
+
     html = f"""
 <!DOCTYPE html>
 <html>
@@ -205,25 +235,6 @@ def create_midi_player_html(base64_data: str, filename: str) -> str:
             display: inline-block !important;
         }}
 
-        midi-player {{
-            display: block !important;
-            width: 100% !important;
-            margin: 20px 0 !important;
-            border-radius: 8px !important;
-            overflow: hidden !important;
-            background: #f5f5f5 !important;
-            min-height: 60px !important;
-        }}
-
-        midi-visualizer {{
-            display: block !important;
-            width: 100% !important;
-            height: 400px !important;
-            border-radius: 8px !important;
-            background: #1a1a2e !important;
-            margin-top: 20px !important;
-        }}
-
         .info {{
             margin-top: 20px !important;
             padding: 15px !important;
@@ -235,11 +246,8 @@ def create_midi_player_html(base64_data: str, filename: str) -> str:
             border: 1px solid #86efac !important;
         }}
 
-        .loading {{
-            text-align: center !important;
-            padding: 20px !important;
-            color: #666 !important;
-            font-size: 14px !important;
+        #midiPlayerContainer {{
+            margin: 20px 0 !important;
         }}
     </style>
 </head>
@@ -250,48 +258,20 @@ def create_midi_player_html(base64_data: str, filename: str) -> str:
             <div class="filename">{filename}</div>
         </div>
 
-        <div class="loading" id="loading">Loading MIDI player libraries...</div>
-
-        <!-- MIDI Player Controls -->
-        <midi-player
-            id="midiPlayer"
-            src="data:audio/midi;base64,{base64_data}"
-            sound-font
-            visualizer="#myVisualizer"
-            style="display: none;">
-        </midi-player>
-
-        <!-- Piano Roll Visualizer -->
-        <midi-visualizer
-            type="piano-roll"
-            id="myVisualizer"
-            style="display: none;">
-        </midi-visualizer>
+        <div id="midiPlayerContainer"></div>
 
         <div class="info">
             🎵 Use the controls above to play, pause, and seek through the MIDI file
         </div>
     </div>
 
-    <!-- Load html-midi-player from CDN -->
-    <script src="https://cdn.jsdelivr.net/combine/npm/tone@14.7.58,npm/@magenta/music@1.23.1/es6/core.js,npm/focus-visible@5,npm/html-midi-player@1.5.0"></script>
-
     <script>
-        // Wait for the player to load
-        setTimeout(function() {{
-            var player = document.getElementById('midiPlayer');
-            var visualizer = document.getElementById('myVisualizer');
-            var loading = document.getElementById('loading');
+    {player_js}
 
-            if (player && visualizer) {{
-                player.style.display = 'block';
-                visualizer.style.display = 'block';
-                loading.style.display = 'none';
-            }} else {{
-                loading.innerHTML = '❌ Failed to load MIDI player. External scripts may be blocked.';
-                loading.style.color = '#d32f2f';
-            }}
-        }}, 2000);
+    // Initialize player with MIDI data
+    const midiData = {midi_data_json};
+    const player = new InlineMIDIPlayer('midiPlayerContainer');
+    player.loadMIDIData(midiData);
     </script>
 </body>
 </html>
@@ -341,10 +321,10 @@ def load_and_display_midi(
             """
             return empty_html, "No file selected", "Ready"
 
-        # Load MIDI as base64
-        base64_data = load_midi_as_base64(directory, filename)
+        # Get MIDI file path
+        file_path = Path(directory) / filename
 
-        if base64_data is None:
+        if not file_path.exists():
             error_html = f"""
             <div style="padding: 60px; text-align: center; background: #fee; border-radius: 12px;">
                 <div style="background: white; padding: 40px; border-radius: 8px; display: inline-block; border: 2px solid #ef4444;">
@@ -357,7 +337,7 @@ def load_and_display_midi(
             return error_html, "Error loading file", f"Error: Could not load {filename}"
 
         # Create player HTML
-        player_html = create_midi_player_html(base64_data, filename)
+        player_html = create_midi_player_html(file_path, filename)
 
         # Extract metadata
         metadata = get_midi_metadata(directory, filename)
