@@ -14,7 +14,7 @@ from miditoolkit import MidiFile
 
 from midi_parser.core.tokenizer_manager import TokenizerManager
 from midi_parser.config.defaults import MidiParserConfig
-from pytorch.data.constants import (
+from ml_core.data.constants import (
     TOKEN_RANGES,
     VOCAB_SIZE,
     CORRIDOS_CHORD_PROGRAM,
@@ -28,7 +28,7 @@ from pytorch.data.constants import (
     ID_TO_TIME_SIG,
     CONDITION_NONE_ID,
 )
-from pytorch.data.vocab import VocabularyInfo
+from ml_core.data.vocab import VocabularyInfo
 
 logger = logging.getLogger(__name__)
 

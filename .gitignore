@@ -19,5 +19,5 @@ __pycache__/
 /temp
 
 # PyTorch data splits
-/pytorch/data/splits/
-/pytorch/logs
+/ml_core/data/splits/
+/ml_core/logs

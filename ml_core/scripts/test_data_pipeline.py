@@ -19,12 +19,12 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 import torch
-from pytorch.data.dataloader import (
+from ml_core.data.dataloader import (
     create_dataloaders,
     print_dataloader_info,
     print_memory_estimates
 )
-from pytorch.data.constants import VOCAB_SIZE, PAD_TOKEN_ID, BOS_TOKEN_ID, EOS_TOKEN_ID
+from ml_core.data.constants import VOCAB_SIZE, PAD_TOKEN_ID, BOS_TOKEN_ID, EOS_TOKEN_ID
 
 
 def test_data_pipeline():

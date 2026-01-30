@@ -19,7 +19,7 @@ import logging
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from gui.state import app_state
-from pytorch.generation import (
+from ml_core.generation import (
     GenerationConfig,
     MusicGenerator,
     GenerationResult,
@@ -27,7 +27,7 @@ from pytorch.generation import (
     create_creative_config,
     create_custom_config
 )
-from pytorch.data.constants import MAJOR_KEYS, MINOR_KEYS
+from ml_core.data.constants import MAJOR_KEYS, MINOR_KEYS
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ def parse_time_signature(time_sig_str: str) -> Tuple[int, int]:
 # Backend Functions
 # ============================================================================
 
-def list_available_checkpoints(checkpoint_dir: str = "pytorch/checkpoints") -> List[str]:
+def list_available_checkpoints(checkpoint_dir: str = "ml_core/checkpoints") -> List[str]:
     """List available model checkpoints, including those in subfolders."""
     try:
         checkpoint_path = Path(checkpoint_dir)
@@ -79,7 +79,7 @@ def list_available_checkpoints(checkpoint_dir: str = "pytorch/checkpoints") -> L
         return []
 
 
-def load_model(checkpoint_name: str, checkpoint_dir: str = "pytorch/checkpoints") -> Tuple[str, bool]:
+def load_model(checkpoint_name: str, checkpoint_dir: str = "ml_core/checkpoints") -> Tuple[str, bool]:
     """Load model from checkpoint."""
     try:
         if not checkpoint_name:

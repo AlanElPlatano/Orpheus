@@ -16,19 +16,19 @@ import shutil
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from gui.state import app_state
-from pytorch.generation.chord_injection import (
+from ml_core.generation.chord_injection import (
     parse_chord_midi,
     ChordValidationResult,
     get_token_count_with_context
 )
-from pytorch.generation import (
+from ml_core.generation import (
     GenerationConfig,
     create_quality_config,
     create_creative_config,
     create_custom_config
 )
-from pytorch.generation.midi_export import tokens_to_midi
-from pytorch.data.constants import (
+from ml_core.generation.midi_export import tokens_to_midi
+from ml_core.data.constants import (
     MAJOR_KEYS,
     MINOR_KEYS,
     KEY_TO_ID,

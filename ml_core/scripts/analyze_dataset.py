@@ -43,7 +43,7 @@ if sys.platform == 'win32':
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from pytorch.data.constants import (
+from ml_core.data.constants import (
     CONTEXT_LENGTH,
     is_pitch_token,
     is_duration_token,

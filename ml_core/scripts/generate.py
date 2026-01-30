@@ -25,7 +25,7 @@ import logging
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from pytorch.generation import (
+from ml_core.generation import (
     GenerationConfig,
     MusicGenerator,
     create_quality_config,

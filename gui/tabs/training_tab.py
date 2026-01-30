@@ -18,12 +18,12 @@ from typing import Tuple, Dict, Any, Optional
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from gui.state import app_state
-from pytorch.config.training_config import TrainingConfig, get_config_by_name
-from pytorch.model.transformer import create_model
-from pytorch.data.dataloader import create_dataloaders
-from pytorch.training import GradioTrainer, TrainingMetrics
-from pytorch.utils.checkpoint_utils import get_latest_checkpoint
-from pytorch.data.split import split_dataset, save_split_manifest
+from ml_core.config.training_config import TrainingConfig, get_config_by_name
+from ml_core.model.transformer import create_model
+from ml_core.data.dataloader import create_dataloaders
+from ml_core.training import GradioTrainer, TrainingMetrics
+from ml_core.utils.checkpoint_utils import get_latest_checkpoint
+from ml_core.data.split import split_dataset, save_split_manifest
 
 
 # ============================================================================
@@ -326,11 +326,11 @@ def start_training_session(
         processed_dir = project_root / 'processed'
 
         # Model-specific split directory
-        split_dir = project_root / 'pytorch' / 'data' / 'splits' / model_name
+        split_dir = project_root / 'ml_core' / 'data' / 'splits' / model_name
         manifest_path = split_dir / 'split_manifest.json'
 
         # Model-specific checkpoint directory
-        checkpoint_dir = project_root / 'pytorch' / 'checkpoints' / model_name
+        checkpoint_dir = project_root / 'ml_core' / 'checkpoints' / model_name
 
         # Always regenerate split manifest on training start
         status_msg = f"📋 Generating dataset split for model '{model_name}'...\n"
@@ -837,7 +837,7 @@ def load_checkpoint_for_training(
             f"  • Step: {step}\n"
             f"  • Best Val Loss: {best_val_loss if isinstance(best_val_loss, str) else f'{best_val_loss:.4f}'}\n\n"
             f"⚠️ To resume training from this checkpoint, you must use the command line:\n"
-            f"python pytorch/scripts/train.py --checkpoint {checkpoint_path}"
+            f"python ml_core/scripts/train.py --checkpoint {checkpoint_path}"
         )
 
         return status_msg, config_updates
@@ -1411,7 +1411,7 @@ def create_training_tab() -> gr.Tab:
                 with gr.Accordion("💾 Checkpoint Management", open=False):
                     checkpoint_dir_input = gr.Textbox(
                         label="Checkpoint Directory",
-                        value="pytorch/checkpoints",
+                        value="ml_core/checkpoints",
                         interactive=True
                     )
 

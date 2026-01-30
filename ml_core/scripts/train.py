@@ -15,11 +15,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import torch
-from pytorch.model.transformer import create_model
-from pytorch.config.training_config import get_config_by_name, TrainingConfig
-from pytorch.data.dataloader import create_dataloaders
-from pytorch.training.trainer import Trainer
-from pytorch.utils.device_utils import set_seed, print_device_info
+from ml_core.model.transformer import create_model
+from ml_core.config.training_config import get_config_by_name, TrainingConfig
+from ml_core.data.dataloader import create_dataloaders
+from ml_core.training.trainer import Trainer
+from ml_core.utils.device_utils import set_seed, print_device_info
 
 
 def parse_args():

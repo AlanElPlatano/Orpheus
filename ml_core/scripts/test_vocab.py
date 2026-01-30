@@ -24,8 +24,8 @@ if sys.platform == 'win32':
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from pytorch.data.vocab import load_vocabulary
-from pytorch.data.constants import (
+from ml_core.data.vocab import load_vocabulary
+from ml_core.data.constants import (
     PAD_TOKEN_ID, BOS_TOKEN_ID, EOS_TOKEN_ID, MASK_TOKEN_ID, BAR_TOKEN_ID,
     VOCAB_SIZE, get_token_type
 )

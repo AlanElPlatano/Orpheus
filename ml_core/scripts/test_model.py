@@ -20,8 +20,8 @@ sys.path.insert(0, str(project_root))
 
 import torch
 import torch.nn as nn
-from pytorch.model.transformer import create_model
-from pytorch.data.constants import (
+from ml_core.model.transformer import create_model
+from ml_core.data.constants import (
     VOCAB_SIZE,
     HIDDEN_DIM,
     NUM_LAYERS,
