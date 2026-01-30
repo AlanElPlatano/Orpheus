@@ -6,11 +6,11 @@
 
 A basic songwriter AI, aimed at producing MIDI files with melody tracks and chord (harmony) tracks, intended to be used as a simple songwriting tool for musicians, producers, and (of course) songwriters.
 
-This AI is supposed to take MIDI files in their most basic structure, being a monophonic melody track and a chord track with no rhythmic variation, with chords being sustained all the way until the next one starts. For proper function of the AI, your training files will have to look something like this:
+This AI is supposed to take MIDI files in their most basic structure, being a monophonic melody track and a chord track with no rhythmic variation, with **each chord being repeated each bar** to ensure the chord context survives the tokenization process. For proper function of the AI, your training files will have to look something like this:
 
 ![Image showcasing the basic melody and chord track structure detailed above](assets/partiture_sample.png "Screenshot from Guitar Pro")
 
-This structure will make sure the AI learns the basic structure of songs (chords and melody), allowing it to train on the core aspects parts of your song dataset, after this, you can manually add more production (chord rhythmic variations, more instruments, bass, etc) to the generated files.
+This structure will make sure the AI learns the basic structure of songs (chords and melody), allowing it to train on the core aspects parts of your song dataset, after this, you can manually add more production (chord rhythmic variations, more instruments, bass, etc) to the generated files. But this structure allows the AI to learn on the fundamental aspects of each song.
 
 ### How does the AI Identify Tracks In My Dataset?
 
@@ -134,7 +134,7 @@ Now you can open any browser and go to 'http://localhost:42069', here you will s
 
 ![Screenshot of the Preprocess tab of the Gradio GUI](assets/preprocess_gui.png "Browser screenshot")
 
-The preprocessing tab prepares your MIDI files for optimal training performance.
+The pre-processing tab prepares your MIDI files for optimal training performance.
 
 ### Backup & Recovery
 
@@ -160,9 +160,9 @@ On the right we have the Process button and a status log for additional clarity.
 
 ![Screenshot of the MIDI Parser tab of the Gradio GUI](assets/midi_parser.png "Browser screenshot")
 
-Our AI cannot understand MIDI files because they're binary files, so this tab processes them into a JSON format which is easier to understand.
+Our AI cannot understand MIDI files because they're binary files, so this tab processes them into a JSON format which the AI can understand.
 
-On the bottom of the pagewe get the basic buttons to start the process and cancel it. When you finish parsing, you will see a log on screen like this one:
+On the bottom of the page we get the basic buttons to start the process and cancel it. When you finish parsing, you will see a log on screen like this one:
 
 ![Console screenshot of the MIDI Parser after processing the entire folder](assets/parser_console.png "Console screenshot")
 
@@ -180,7 +180,7 @@ This tab is very important because it performs transposition to improve model ge
 
 The system creates 12 versions of each song by transposing from -6 to +5 semitones, maintaining modal integrity (major stays major, minor stays minor).
 
-### Benefits
+### Why we're dping this
 
 **1. Scale-Invariant Learning**  
 The model learns intrinsic musical patterns independent of key, preventing bias toward keys overrepresented in your original dataset.
@@ -213,7 +213,7 @@ Single-epoch validation run to verify your pipeline integrity before committing 
 Deliberately memorizes a small batch. While overfitting is typically undesirable, successful memorization confirms your training pipeline functions correctly. Very useful for debugging and sanity checks.
 
 - **production:**
-High-end preset, it will make a long training process with all features maxxed out BUT IT WILL CONSUME AN UNGODLY AMOUNT OF VRAM, make sure you have +16GB of VRAM before using this preset.
+High-end preset, it will make a long training process with all features maxxed out BUT IT WILL CONSUME AN UNGODLY AMOUNT OF VRAM, make sure you have a GPU with +16GB of VRAM before using this preset.
 
 - **low_memory:**
 This preset exists solely to replace the 'default' and 'production' presets for low memory systems like laptops (~4GB VRAM). Keep in mind that this preset will use a shorter context window and will most likely truncate training data.
@@ -228,7 +228,7 @@ Which is a simple web-based database that the project uses to submit statistics 
 
 You can type "3" and "Enter" if you don't need it.
 
-Unless you selected 'quick_test' this will start a process that will take several hours to finish, for reference, my RTX 3060 took about 12 hours with the production preset and 3000 files.
+Unless you selected 'quick_test' this will start a process that will take several hours to finish, for reference, my RTX 3060 12GB took about 8 hours with the production preset and 2000 files.
 
 #### Pause and Resume During Training
 
@@ -268,7 +268,9 @@ Below it we get options for conditional generation:
 
 Here we can apply constraints to the generated files using a model, all settings are optional so you can use any combination of them and the model will be able to generate files following these guides.
 
-And at the bottom we get some output options, where we can define the number of generated files and max length. Right below these options we get the 'Generated Music', which will use the model to generate some files, this process should only take a few minutes depending on how many files you are generating.
+**NOTE: Be aware that these guidelines are learned during training, this means that they will only work correctly if all your dataset had the correct key and time signature metadata**. If you are using MIDI files without a specified key (which defaults to C Major) the model will not have learned what keys mean and will most likely generated faulty data when constraints are applied. 
+
+And at the bottom we get some output options, where we can define the number of generated files and max length. Right below these options we get the 'Generate Music', which will use the model to generate the files, this process should only take a few minutes depending on how many files you are generating, inference is much faster than training.
 
 If everything up to this point went well, you should have your generated MIDI files in the output path. You can import these files into any MIDI software (Reaper, Guitar Pro, Sybellius, Tux Guitar, Pro Tools, etc) and you will have your music. Enjoy!
 
