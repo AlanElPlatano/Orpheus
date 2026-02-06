@@ -254,7 +254,8 @@ class MusicGenerator:
         self,
         prompt_tokens: Optional[List[int]] = None,
         seed: Optional[int] = None,
-        index: int = 0
+        index: int = 0,
+        apply_chord_sustain: bool = True
     ) -> GenerationResult:
         """
         Generate a single music file.
@@ -378,7 +379,8 @@ class MusicGenerator:
                     token_ids,
                     self.vocab_info,
                     midi_path,
-                    self.tokenizer_config
+                    self.tokenizer_config,
+                    apply_chord_sustain=apply_chord_sustain
                 )
 
                 if not midi_success:
@@ -415,7 +417,8 @@ class MusicGenerator:
     def generate_batch(
         self,
         num_files: int,
-        progress_callback=None
+        progress_callback=None,
+        apply_chord_sustain: bool = True
     ) -> List[GenerationResult]:
         """
         Generate multiple music files.
@@ -442,7 +445,7 @@ class MusicGenerator:
             logger.info(f"Generating file {i+1}/{num_files}")
             logger.info(f"{'='*60}")
 
-            result = self.generate_single(index=i+1)
+            result = self.generate_single(index=i+1, apply_chord_sustain=apply_chord_sustain)
             results.append(result)
 
             # Call progress callback if provided

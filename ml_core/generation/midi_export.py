@@ -31,7 +31,8 @@ def tokens_to_midi(
     vocab_info: VocabularyInfo,
     output_path: Path,
     tokenizer_config: Optional[Dict[str, Any]] = None,
-    remove_special_tokens: bool = True
+    remove_special_tokens: bool = True,
+    apply_chord_sustain: bool = True
 ) -> Tuple[bool, Optional[Path], Optional[str]]:
     """
     Convert token sequence directly to MIDI file using miditok.
@@ -138,9 +139,10 @@ def tokens_to_midi(
             except Exception as e:
                 logger.warning(f"Could not delete temporary file {tmp_path}: {e}")
 
-        # Apply chord sustain post-processing
+        # Optionally apply chord sustain post-processing
         # This extends chord durations to the start of the next chord
-        midi = apply_chord_sustain(midi)
+        if apply_chord_sustain:
+            midi = apply_chord_sustain(midi)
 
         # Ensure output directory exists
         output_path.parent.mkdir(parents=True, exist_ok=True)

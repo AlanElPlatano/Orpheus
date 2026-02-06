@@ -125,6 +125,7 @@ def start_generation(
     key_signature: str,
     tempo: float,
     time_signature: str,
+    apply_chord_sustain: bool,
     progress=gr.Progress()
 ) -> Tuple[str, pd.DataFrame, str]:
     """Start music generation."""
@@ -183,7 +184,8 @@ def start_generation(
         # Generate files
         results = app_state.generator.generate_batch(
             num_files=num_files,
-            progress_callback=progress_callback
+            progress_callback=progress_callback,
+            apply_chord_sustain=apply_chord_sustain
         )
 
         app_state.generation_active = False
@@ -399,6 +401,12 @@ def create_generator_tab() -> gr.Tab:
                     value="./generated"
                 )
 
+                chord_sustain_checkbox = gr.Checkbox(
+                    label="Apply Chord Sustain Post-Processing",
+                    value=True,
+                    info="Extends chord note durations to the start of the next chord, ensuring continuous harmonic support without gaps between chords. This is mostly useful when your training dataset had gaps between chords"
+                )
+
                 # Generate button
                 generate_btn = gr.Button(
                     "Generate Music",
@@ -509,7 +517,8 @@ def create_generator_tab() -> gr.Tab:
                 output_dir_textbox,
                 key_dropdown,
                 tempo_slider,
-                time_sig_dropdown
+                time_sig_dropdown,
+                chord_sustain_checkbox
             ],
             outputs=[
                 generation_status,
