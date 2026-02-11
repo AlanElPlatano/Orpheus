@@ -332,7 +332,7 @@ class TwoStageGenerator:
         # Initialize generation state
         state = GenerationState()
         state.current_track = 'chord'
-        state.current_key = self.config.key  # For future conditional generation
+        state.current_key = self.config.key
 
         # Use provided temperature or fall back to config
         effective_temperature = temperature if temperature is not None else self.config.temperature

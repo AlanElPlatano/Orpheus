@@ -40,9 +40,7 @@ class GenerationConfig:
     top_k: Optional[int] = None
     repetition_penalty: float = DEFAULT_REPETITION_PENALTY
 
-    # ========== Conditioning Parameters (for future use) ==========
-    # These are structured now but not implemented yet
-    # Will be used when conditional generation is added
+    # ========== Conditioning Parameters (requires model trained with use_conditioning=True) ==========
     key: Optional[str] = None  # e.g., "Fm", "C", "Am"
     tempo: Optional[float] = None  # e.g., 125.0 BPM
     time_signature: Optional[Tuple[int, int]] = None  # e.g., (6, 8) or (4, 4)

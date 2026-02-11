@@ -1,9 +1,9 @@
 """
 Constrained decoding for music generation.
 
-Enhances the basic constraints from pytorch/model/constraints.py with
-complete implementations for diatonic scales, chord sustain validation,
-and sequence completion detection.
+Enhanced constraint implementations for diatonic scales, chord sustain
+validation, and sequence completion detection. Uses the monophony
+constraint and GenerationState from ml_core/model/constraints.py.
 """
 
 import torch
@@ -313,12 +313,8 @@ def apply_all_constraints(
     Returns:
         Constrained logits
     """
-    from ..model.constraints import (
-        apply_monophony_constraint,
-        apply_chord_sustain_constraint
-    )
+    from ..model.constraints import apply_monophony_constraint
 
-    # Apply monophony constraint (from base module)
     logits = apply_monophony_constraint(logits, state)
 
     # Apply chord sustain constraint (enhanced version)
