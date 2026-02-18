@@ -12,7 +12,6 @@ from typing import Optional, List, Set, Dict
 import logging
 
 from ..data.constants import (
-    TOKEN_RANGES,
     BOS_TOKEN_ID,
     EOS_TOKEN_ID,
     BAR_TOKEN_ID,
@@ -148,19 +147,25 @@ def update_generation_state(
     """
     Update generation state based on newly generated token.
 
-    Tracks active notes, position, and track context.
+    Tracks active notes, position, track context, and structural markers.
 
     Args:
         state: Current generation state
         token_id: Newly generated token ID
         vocab_info: Vocabulary information for token categorization
     """
+    # Track switching via structural markers
+    if token_id == vocab_info.chord_start_token_id:
+        state.current_track = 'chord'
+        return
+
+    if token_id == vocab_info.melody_start_token_id:
+        state.current_track = 'melody'
+        return
+
     # Update based on token type
     if vocab_info.is_pitch_token(token_id):
-        # Pitch token - register note on
         token_name = vocab_info.get_token_name(token_id)
-
-        # Extract MIDI pitch from token name (e.g., "Pitch_60" -> 60)
         try:
             midi_pitch = int(token_name.split('_')[1])
             state.note_on(midi_pitch, state.current_track or 'melody')
@@ -168,29 +173,24 @@ def update_generation_state(
             logger.warning(f"Could not parse pitch from token: {token_name}")
 
     elif vocab_info.is_duration_token(token_id):
-        # Duration token - notes end
-        # In REMI, duration comes after pitch, so active notes should end
+        # Duration comes after pitch in REMI, clear active notes
         if state.current_track == 'melody':
             state.active_melody_notes.clear()
         elif state.current_track == 'chord':
             state.active_chord_notes.clear()
 
     elif vocab_info.is_position_token(token_id):
-        # Position token advances time
-        # NOTE: Position tokens are RELATIVE to bar start (0-47), not absolute
         token_name = vocab_info.get_token_name(token_id)
         try:
             relative_position = int(token_name.split('_')[1])
-            # Convert to absolute position
             absolute_position = state.current_bar * 48 + relative_position
             state.current_position = absolute_position
         except (IndexError, ValueError):
             pass
 
     elif token_id == BAR_TOKEN_ID:
-        # Bar token - new measure
         state.current_bar += 1
-        state.current_position = state.current_bar * 48  # Start of new bar
+        state.current_position = state.current_bar * 48
 
 
 # ============================================================================
