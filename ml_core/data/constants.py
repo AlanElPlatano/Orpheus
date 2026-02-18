@@ -19,7 +19,9 @@ from typing import Dict, List
 class SpecialTokens(IntEnum):
     """
     Special token IDs from the REMI vocabulary.
-    These are fixed across all files.
+    PAD through BAR are fixed MidiTok IDs.
+    CHORD_START and MELODY_START are appended after MidiTok's vocabulary
+    during post-processing (their actual IDs come from the vocabulary).
     """
     PAD = 0      # Padding token for batch processing
     BOS = 1      # Beginning of sequence
@@ -35,12 +37,19 @@ EOS_TOKEN_ID = SpecialTokens.EOS
 MASK_TOKEN_ID = SpecialTokens.MASK
 BAR_TOKEN_ID = SpecialTokens.BAR
 
+# Structural token names (IDs are assigned dynamically based on MidiTok vocab size)
+CHORD_START_TOKEN_NAME = "ChordStart_None"
+MELODY_START_TOKEN_NAME = "MelodyStart_None"
+
 
 # ============================================================================
 # Token Range Constants
 # ============================================================================
 
-# Based on the vocabulary structure from the JSON
+# DEPRECATED: These ranges are inaccurate for the current vocabulary and should
+# not be used for new code. Use VocabularyInfo token sets (pitch_tokens,
+# program_tokens, etc.) loaded from the JSON vocabulary instead.
+# Kept only for backward compatibility with code that hasn't been migrated yet.
 TOKEN_RANGES = {
     'pitch': (5, 53),           # Pitch_36 to Pitch_84
     'velocity': (54, 61),       # Velocity_15 to Velocity_127
@@ -81,8 +90,8 @@ MAX_DURATION_TICKS = 4.0 * BEAT_RESOLUTION  # 4.0 beats
 # Model Architecture Constants
 # ============================================================================
 
-# From the actual vocabulary extracted from tokenizer
-VOCAB_SIZE = 531  # Total vocabulary size (531 tokens in REMI vocab)
+# Total vocabulary size: 531 base REMI MidiTok tokens + 2 structural tokens (ChordStart, MelodyStart)
+VOCAB_SIZE = 533
 CONTEXT_LENGTH = 2048  # Maximum sequence length
 HIDDEN_DIM = 512  # Model dimension
 NUM_LAYERS = 8  # Transformer layers
@@ -377,8 +386,13 @@ def get_token_type(token_id: int) -> str:
 
 
 def is_special_token(token_id: int) -> bool:
-    """Check if token is a special token."""
+    """Check if token is a special token (PAD, BOS, EOS, MASK, BAR)."""
     return token_id in {PAD_TOKEN_ID, BOS_TOKEN_ID, EOS_TOKEN_ID, MASK_TOKEN_ID, BAR_TOKEN_ID}
+
+
+def is_structural_token_name(token_name: str) -> bool:
+    """Check if a token name is one of the structural tokens (ChordStart, MelodyStart)."""
+    return token_name in {CHORD_START_TOKEN_NAME, MELODY_START_TOKEN_NAME}
 
 
 def is_pitch_token(token_id: int) -> bool:
@@ -447,6 +461,10 @@ __all__ = [
     'EOS_TOKEN_ID',
     'MASK_TOKEN_ID',
     'BAR_TOKEN_ID',
+
+    # Structural token names
+    'CHORD_START_TOKEN_NAME',
+    'MELODY_START_TOKEN_NAME',
 
     # Token ranges
     'TOKEN_RANGES',
@@ -528,6 +546,7 @@ __all__ = [
     # Utility functions
     'get_token_type',
     'is_special_token',
+    'is_structural_token_name',
     'is_pitch_token',
     'is_duration_token',
     'is_position_token',
