@@ -357,7 +357,8 @@ class TwoStageGenerator:
                     state,
                     self.vocab_info,
                     self.pitch_token_to_midi,
-                    self.config.key
+                    self.config.key,
+                    generated_tokens=generated_tokens
                 )
 
                 # Sample next token with track-aware constraints
@@ -476,7 +477,8 @@ class TwoStageGenerator:
                     state,
                     self.vocab_info,
                     self.pitch_token_to_midi,
-                    self.config.key
+                    self.config.key,
+                    generated_tokens=generated_tokens
                 )
 
                 # Sample next token with track-aware constraints

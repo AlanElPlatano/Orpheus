@@ -119,19 +119,19 @@ WEIGHT_DECAY = 0.01
 # Sampling parameters
 DEFAULT_TEMPERATURE = 0.8
 DEFAULT_TOP_P = 0.95
-DEFAULT_REPETITION_PENALTY = 1.1
+DEFAULT_REPETITION_PENALTY = 1.3
 
 # Quality vs Creative modes
 QUALITY_MODE_PARAMS = {
     'temperature': 0.8,
     'top_p': 0.95,
-    'repetition_penalty': 1.1
+    'repetition_penalty': 1.3
 }
 
 CREATIVE_MODE_PARAMS = {
     'temperature': 1.1,
     'top_p': 0.92,
-    'repetition_penalty': 1.05
+    'repetition_penalty': 1.2
 }
 
 # Retry logic

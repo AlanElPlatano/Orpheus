@@ -209,13 +209,34 @@ class ConstraintValidator:
         """
         Validate monophony constraint (no overlapping melody notes).
 
+        Only checks monophony in melody sections (after MelodyStart marker).
+        Chord sections are polyphonic by design and are excluded.
+
         Args:
             token_ids: Token sequence
             report: Validation report to update
         """
         active_notes: Set[int] = set()
+        in_melody = False
+
+        chord_start_id = self.vocab_info.chord_start_token_id
+        melody_start_id = self.vocab_info.melody_start_token_id
 
         for i, token_id in enumerate(token_ids):
+            # Track section switches
+            if token_id == melody_start_id:
+                in_melody = True
+                active_notes.clear()
+                continue
+            elif token_id == chord_start_id:
+                in_melody = False
+                active_notes.clear()
+                continue
+
+            # Only check monophony in melody sections
+            if not in_melody:
+                continue
+
             # Check if this is a pitch token
             if self.vocab_info.is_pitch_token(token_id):
                 token_name = self.vocab_info.get_token_name(token_id)

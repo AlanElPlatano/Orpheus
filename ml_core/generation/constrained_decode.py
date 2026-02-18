@@ -197,6 +197,87 @@ def update_generation_state(
 # Constraint Application
 # ============================================================================
 
+def apply_consecutive_repetition_constraint(
+    logits: torch.Tensor,
+    generated_tokens: List[int],
+    max_consecutive: int = 3,
+    max_cycle_length: int = 8,
+    min_cycle_repetitions: int = 3,
+    mask_value: float = float('-inf')
+) -> torch.Tensor:
+    """
+    Hard constraint: prevent both single-token loops and short repeating cycles.
+
+    Detects two types of degenerate patterns:
+    1. Single token repeated N+ times: AAAA... -> mask A
+    2. Short cycle repeated M+ times: ABCDABCDABCD... -> mask next token in cycle
+
+    Special tokens (BOS, EOS, PAD, BAR) are exempt since they may legitimately repeat.
+
+    Args:
+        logits: Model output logits, shape [batch_size, vocab_size]
+        generated_tokens: List of previously generated token IDs
+        max_consecutive: Max allowed consecutive repeats of same token (default: 3)
+        max_cycle_length: Max cycle length to check for (default: 8)
+        min_cycle_repetitions: Min repetitions to trigger cycle detection (default: 3)
+        mask_value: Value to use for masked positions
+
+    Returns:
+        Logits with degenerate pattern tokens masked
+    """
+    if len(generated_tokens) < max_consecutive:
+        return logits
+
+    exempt_tokens = {BOS_TOKEN_ID, EOS_TOKEN_ID, PAD_TOKEN_ID, BAR_TOKEN_ID}
+    cloned = False
+
+    # 1) Check single-token repetition (AAAA...)
+    recent = generated_tokens[-max_consecutive:]
+    if len(set(recent)) == 1:
+        repeated_token = recent[0]
+        if repeated_token not in exempt_tokens:
+            if not cloned:
+                logits = logits.clone()
+                cloned = True
+            logits[:, repeated_token] = mask_value
+            logger.debug(
+                f"Blocked token {repeated_token} after {max_consecutive} consecutive repetitions"
+            )
+            return logits
+
+    # 2) Check short cycle repetition (ABCDABCDABCD...)
+    for cycle_len in range(2, max_cycle_length + 1):
+        needed = cycle_len * min_cycle_repetitions
+        if len(generated_tokens) < needed:
+            continue
+
+        tail = generated_tokens[-needed:]
+        pattern = tail[:cycle_len]
+
+        # Verify the pattern repeats exactly min_cycle_repetitions times
+        is_cycle = True
+        for i in range(cycle_len, needed):
+            if tail[i] != pattern[i % cycle_len]:
+                is_cycle = False
+                break
+
+        if is_cycle:
+            # The next token the model would generate to continue the cycle
+            next_in_cycle = pattern[0]
+            if next_in_cycle not in exempt_tokens:
+                if not cloned:
+                    logits = logits.clone()
+                    cloned = True
+                logits[:, next_in_cycle] = mask_value
+                logger.debug(
+                    f"Blocked repeating cycle of length {cycle_len} "
+                    f"(pattern: {pattern}), masked token {next_in_cycle}"
+                )
+            break  # Handle shortest detected cycle only
+
+    return logits
+
+
 def apply_diatonic_boost_enhanced(
     logits: torch.Tensor,
     key: Optional[str],
@@ -295,12 +376,14 @@ def apply_all_constraints(
     vocab_info: 'VocabularyInfo',
     pitch_token_to_midi: Optional[Dict[int, int]] = None,
     key: Optional[str] = None,
-    diatonic_boost_weight: float = 2.0
+    diatonic_boost_weight: float = 2.0,
+    generated_tokens: Optional[List[int]] = None,
+    max_consecutive_repetitions: int = 5
 ) -> torch.Tensor:
     """
     Apply all musical constraints to logits.
 
-    Combines monophony, chord sustain, and diatonic boosting.
+    Combines monophony, chord sustain, diatonic boosting, and repetition prevention.
 
     Args:
         logits: Model output logits
@@ -309,6 +392,8 @@ def apply_all_constraints(
         pitch_token_to_midi: Mapping for diatonic boosting (optional)
         key: Key signature for diatonic boosting (optional)
         diatonic_boost_weight: Boost weight for diatonic pitches
+        generated_tokens: Previously generated tokens for repetition constraint
+        max_consecutive_repetitions: Max allowed consecutive repeats of same token
 
     Returns:
         Constrained logits
@@ -324,6 +409,12 @@ def apply_all_constraints(
     if pitch_token_to_midi is not None and key is not None:
         logits = apply_diatonic_boost_enhanced(
             logits, key, pitch_token_to_midi, diatonic_boost_weight
+        )
+
+    # Apply consecutive repetition constraint (prevents infinite loops)
+    if generated_tokens is not None:
+        logits = apply_consecutive_repetition_constraint(
+            logits, generated_tokens, max_consecutive=max_consecutive_repetitions
         )
 
     return logits
@@ -411,6 +502,7 @@ __all__ = [
     'get_diatonic_pitches',
     'get_diatonic_token_ids',
     'update_generation_state',
+    'apply_consecutive_repetition_constraint',
     'apply_diatonic_boost_enhanced',
     'apply_chord_sustain_constraint_enhanced',
     'apply_all_constraints',
