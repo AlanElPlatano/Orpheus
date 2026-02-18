@@ -46,20 +46,20 @@ MELODY_START_TOKEN_NAME = "MelodyStart_None"
 # Token Range Constants
 # ============================================================================
 
-# DEPRECATED: These ranges are inaccurate for the current vocabulary and should
-# not be used for new code. Use VocabularyInfo token sets (pitch_tokens,
-# program_tokens, etc.) loaded from the JSON vocabulary instead.
-# Kept only for backward compatibility with code that hasn't been migrated yet.
+# DEPRECATED: Prefer VocabularyInfo token sets (pitch_tokens, program_tokens,
+# etc.) loaded from the JSON vocabulary instead. These hardcoded ranges are a
+# fallback and must be kept in sync with the tokenizer vocabulary.
+# Last synced: 2026-02-18 from processed vocabulary (533 tokens).
 TOKEN_RANGES = {
-    'pitch': (5, 53),           # Pitch_36 to Pitch_84
-    'velocity': (54, 61),       # Velocity_15 to Velocity_127
-    'duration': (62, 77),       # Duration_0.1.4 to Duration_4.0.4
-    'position': (78, 125),      # Position_0 to Position_47
-    'pitch_drum': (126, 187),   # PitchDrum_27 to PitchDrum_88
-    'chord': (188, 201),        # Chord tokens
-    'tempo': (202, 265),        # Tempo_40.0 to Tempo_250.0
-    'program': (266, 394),      # Program_0 to Program_127 and Program_-1
-    'time_sig': (395, 403),     # TimeSig_3/8 to TimeSig_4/4
+    'pitch': (5, 92),           # Pitch_21 to Pitch_108 (88 tokens)
+    'velocity': (93, 108),      # Velocity_8 to Velocity_127 (16 tokens)
+    'duration': (109, 156),     # Duration tokens (48 tokens)
+    'position': (157, 252),     # Position_0 to Position_95 (96 tokens)
+    'pitch_drum': (253, 314),   # PitchDrum tokens (62 tokens)
+    'chord': (315, 328),        # Chord tokens (14 tokens)
+    'tempo': (329, 392),        # Tempo tokens (64 tokens)
+    'program': (393, 521),      # Program_-1 to Program_127 (129 tokens)
+    'time_sig': (522, 530),     # TimeSig tokens (9 tokens)
 }
 
 
