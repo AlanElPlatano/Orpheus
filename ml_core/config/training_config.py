@@ -10,6 +10,7 @@ from typing import Optional
 from pathlib import Path
 
 from ..data.constants import (
+    VOCAB_SIZE,
     DEFAULT_BATCH_SIZE,
     DEFAULT_LEARNING_RATE,
     WARMUP_STEPS,
@@ -43,7 +44,7 @@ class TrainingConfig:
     # ========================================================================
     # Model settings
     # ========================================================================
-    vocab_size: int = 531
+    vocab_size: int = VOCAB_SIZE
     hidden_dim: int = 512
     num_layers: int = 8
     num_heads: int = 8
