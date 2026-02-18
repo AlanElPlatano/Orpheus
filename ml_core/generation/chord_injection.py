@@ -15,20 +15,16 @@ from miditoolkit import MidiFile
 from midi_parser.core.tokenizer_manager import TokenizerManager
 from midi_parser.config.defaults import MidiParserConfig
 from ml_core.data.constants import (
-    TOKEN_RANGES,
     VOCAB_SIZE,
-    CORRIDOS_CHORD_PROGRAM,
     BOS_TOKEN_ID,
     EOS_TOKEN_ID,
     PAD_TOKEN_ID,
     BAR_TOKEN_ID,
-    KEY_TO_ID,
-    TIME_SIG_TO_ID,
-    ID_TO_KEY,
-    ID_TO_TIME_SIG,
-    CONDITION_NONE_ID,
+    CHORD_START_TOKEN_NAME,
+    MELODY_START_TOKEN_NAME,
 )
 from ml_core.data.vocab import VocabularyInfo
+from midi_parser.core.token_reorderer import reorder_bar_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +36,7 @@ class ChordMetadata:
     tempo: Optional[float] = None
     time_signature: Optional[Tuple[int, int]] = None
     token_count: int = 0
-    has_program_token: bool = False
-    original_program: Optional[int] = None
+    has_chord_start: bool = False
 
 
 @dataclass
@@ -116,24 +111,30 @@ def parse_chord_midi(
             return result
 
         tokens = tokenization_result.tokens
+        vocabulary = tokenization_result.vocabulary
         logger.info(f"✓ Tokenization successful: {len(tokens)} tokens")
 
+        # Reorder tokens into bar-level chord/melody structure
+        # This also extends vocabulary with CHORD_START/MELODY_START
+        tokens, vocabulary = reorder_bar_tokens(tokens, vocabulary)
+        logger.info(f"✓ Reordered tokens: {len(tokens)} tokens")
+
         # Validate tokens are within vocabulary
-        invalid_tokens = [t for t in tokens if t < 0 or t >= VOCAB_SIZE]
+        vocab_size = len(vocabulary)
+        invalid_tokens = [t for t in tokens if t < 0 or t >= vocab_size]
         if invalid_tokens:
             result.errors.append(
-                f"Found {len(invalid_tokens)} invalid tokens (out of vocab range 0-{VOCAB_SIZE-1})"
+                f"Found {len(invalid_tokens)} invalid tokens (out of vocab range 0-{vocab_size-1})"
             )
             return result
 
         logger.info(f"✓ All tokens within vocabulary range")
 
-        # Extract metadata from tokens
-        metadata = extract_metadata(tokens)
+        # Extract metadata from reordered tokens
+        metadata = extract_metadata(tokens, vocabulary)
         result.metadata = metadata
 
-        # Check token count
-        # Remove special tokens for counting (BOS, EOS, PAD)
+        # Check token count (exclude special tokens)
         content_tokens = [
             t for t in tokens
             if t not in {BOS_TOKEN_ID, EOS_TOKEN_ID, PAD_TOKEN_ID}
@@ -154,9 +155,7 @@ def parse_chord_midi(
 
         logger.info(f"✓ Token count validation passed: {metadata.token_count}/{max_tokens}")
 
-        # Force chord program if not present
-        tokens_with_program = force_chord_program(tokens, metadata)
-        result.tokens = tokens_with_program
+        result.tokens = tokens
 
         # All validations passed
         result.is_valid = True
@@ -171,118 +170,51 @@ def parse_chord_midi(
     return result
 
 
-def extract_metadata(tokens: List[int]) -> ChordMetadata:
+def extract_metadata(tokens: List[int], vocabulary: Dict[str, int]) -> ChordMetadata:
     """
-    Extract metadata (key, tempo, time signature) from token sequence.
+    Extract metadata (tempo, time signature) from reordered token sequence.
+
+    Uses vocabulary lookup instead of hardcoded token ranges.
 
     Args:
-        tokens: List of token IDs
+        tokens: List of token IDs (in new bar-level format)
+        vocabulary: Token name to ID mapping
 
     Returns:
         ChordMetadata with extracted information
     """
     metadata = ChordMetadata()
 
-    tempo_start, tempo_end = TOKEN_RANGES['tempo']
-    timesig_start, timesig_end = TOKEN_RANGES['time_sig']
-    program_start, program_end = TOKEN_RANGES['program']
+    # Build reverse vocabulary for token name lookup
+    id_to_name = {v: k for k, v in vocabulary.items()}
+    chord_start_id = vocabulary.get(CHORD_START_TOKEN_NAME)
 
     for token_id in tokens:
-        # Extract tempo
-        if tempo_start <= token_id <= tempo_end:
-            # Tempo tokens are Tempo_40.0 to Tempo_250.0
-            # Token 202 = Tempo_40.0, Token 265 = Tempo_250.0
-            # Linear mapping: tempo = 40 + (token_id - 202) * (210 / 63)
-            tempo_value = 40.0 + (token_id - tempo_start) * (210.0 / (tempo_end - tempo_start))
-            metadata.tempo = round(tempo_value, 1)
-            logger.debug(f"Extracted tempo: {metadata.tempo} BPM from token {token_id}")
+        token_name = id_to_name.get(token_id, "")
 
-        # Extract time signature
-        elif timesig_start <= token_id <= timesig_end:
-            # Map token ID back to time signature
-            # Need to find which time signature this corresponds to
-            # Time sig tokens are 395-403, corresponding to 9 time signatures
-            for time_sig_tuple, ts_id in TIME_SIG_TO_ID.items():
-                if time_sig_tuple == (0, 0):  # Skip the "none" entry
-                    continue
-                # TIME_SIG_TO_ID maps to 1-indexed IDs, need to reverse
-                # Token 395 = first time sig, token 403 = last time sig
-                if token_id == timesig_start + (ts_id - 1):
-                    metadata.time_signature = time_sig_tuple
-                    logger.debug(f"Extracted time signature: {time_sig_tuple} from token {token_id}")
-                    break
+        if token_name.startswith("Tempo_"):
+            try:
+                metadata.tempo = float(token_name.split("_")[1])
+                logger.debug(f"Extracted tempo: {metadata.tempo} BPM")
+            except (ValueError, IndexError):
+                pass
 
-        # Extract program
-        elif program_start <= token_id <= program_end:
-            metadata.has_program_token = True
-            if token_id == program_end:
-                program_num = -1
-            else:
-                program_num = token_id - program_start
-            metadata.original_program = program_num
-            logger.debug(f"Found program token: Program_{program_num} (token {token_id})")
+        elif token_name.startswith("TimeSig_"):
+            try:
+                parts = token_name.split("_")[1].split("/")
+                metadata.time_signature = (int(parts[0]), int(parts[1]))
+                logger.debug(f"Extracted time signature: {metadata.time_signature}")
+            except (ValueError, IndexError):
+                pass
 
-    # Key extraction is not directly available from tokens
-    # (key is passed as conditioning tensor, not in token sequence)
-    # We'll leave it as None and let the user specify it in the UI
+        elif token_id == chord_start_id:
+            metadata.has_chord_start = True
 
     logger.info(f"Metadata extraction complete: tempo={metadata.tempo}, "
                 f"time_sig={metadata.time_signature}, "
-                f"has_program={metadata.has_program_token}")
+                f"has_chord_start={metadata.has_chord_start}")
 
     return metadata
-
-
-def force_chord_program(tokens: List[int], metadata: ChordMetadata) -> List[int]:
-    """
-    Ensure the token sequence uses the chord program (Program_29).
-
-    If no program token exists, inject Program_29 at the beginning.
-    If a different program token exists, replace it with Program_29.
-
-    Args:
-        tokens: Original token sequence
-        metadata: Metadata with program information
-
-    Returns:
-        Token sequence with forced chord program
-    """
-    program_start, program_end = TOKEN_RANGES['program']
-    chord_program_token = program_start + CORRIDOS_CHORD_PROGRAM  # 266 + 29 = 295
-
-    # If already has the correct program, return as-is
-    if metadata.has_program_token and chord_program_token in tokens:
-        logger.info("✓ Chord program (Program_29) already present")
-        return tokens
-
-    # Find position to inject/replace program token
-    # Program tokens typically appear early in the sequence, after BOS
-    modified_tokens = []
-    program_injected = False
-
-    for i, token_id in enumerate(tokens):
-        # If we find any program token, replace it with chord program
-        if program_start <= token_id <= program_end:
-            if not program_injected:
-                modified_tokens.append(chord_program_token)
-                program_injected = True
-                logger.info(f"✓ Replaced Program_{metadata.original_program} with Program_29")
-            # Skip this token (replaced)
-        else:
-            modified_tokens.append(token_id)
-
-    # If no program token was found, inject after BOS token
-    if not program_injected:
-        # Find BOS token position (should be first)
-        if tokens and tokens[0] == BOS_TOKEN_ID:
-            modified_tokens = [BOS_TOKEN_ID, chord_program_token] + tokens[1:]
-            logger.info("✓ Injected Program_29 after BOS token")
-        else:
-            # No BOS, inject at the very beginning
-            modified_tokens = [chord_program_token] + tokens
-            logger.info("✓ Injected Program_29 at beginning")
-
-    return modified_tokens
 
 
 def validate_chord_tokens(
@@ -292,8 +224,10 @@ def validate_chord_tokens(
     """
     Validate that chord tokens are valid for generation.
 
+    Checks for CHORD_START structural marker and basic structure.
+
     Args:
-        tokens: Token sequence to validate
+        tokens: Token sequence to validate (in new bar-level format)
         vocab_info: Vocabulary information
 
     Returns:
@@ -311,13 +245,11 @@ def validate_chord_tokens(
     if not has_bar_token:
         errors.append("No bar tokens found - chord sequence may lack rhythmic structure")
 
-    # Check for chord program
-    program_start, program_end = TOKEN_RANGES['program']
-    chord_program_token = program_start + CORRIDOS_CHORD_PROGRAM
-    has_chord_program = chord_program_token in tokens
-
-    if not has_chord_program:
-        errors.append("Chord program (Program_29) not found in token sequence")
+    # Check for CHORD_START structural marker
+    if vocab_info.chord_start_token_id is None:
+        errors.append("CHORD_START token not found in vocabulary")
+    elif vocab_info.chord_start_token_id not in tokens:
+        errors.append("CHORD_START marker not found in token sequence")
 
     is_valid = len(errors) == 0
     return is_valid, errors
@@ -361,7 +293,6 @@ __all__ = [
     'ChordValidationResult',
     'parse_chord_midi',
     'extract_metadata',
-    'force_chord_program',
     'validate_chord_tokens',
     'get_token_count_with_context',
 ]
