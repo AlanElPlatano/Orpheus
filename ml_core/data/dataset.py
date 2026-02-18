@@ -20,11 +20,8 @@ from .constants import (
     VOCAB_SIZE,
     TRACK_TYPE_MELODY,
     TRACK_TYPE_CHORD,
-    CORRIDOS_MELODY_PROGRAM,
-    CORRIDOS_CHORD_PROGRAM,
-    TOKEN_RANGES,
-    get_track_type_from_program,
-    # Conditioning constants
+    CHORD_START_TOKEN_NAME,
+    MELODY_START_TOKEN_NAME,
     KEY_TO_ID,
     TIME_SIG_TO_ID,
     CONDITION_NONE_ID,
@@ -93,60 +90,32 @@ class MusicTokenDataset(Dataset):
     def _generate_track_ids(
         self,
         tokens: List[int],
-        tracks_info: List[Dict]
+        vocabulary: Dict[str, int]
     ) -> List[int]:
         """
-        Generate track type IDs for each token in the sequence.
+        Generate track type IDs for each token based on CHORD_START/MELODY_START markers.
 
-        This function analyzes the token sequence to determine which track
-        (melody or chord) each token belongs to, based on Program tokens.
+        Scans the token sequence for structural boundary tokens. Everything after
+        CHORD_START is labeled as chord until MELODY_START switches to melody.
 
         Args:
             tokens: List of token IDs
-            tracks_info: List of track dictionaries from JSON metadata
+            vocabulary: Token name -> ID mapping from the JSON file
 
         Returns:
             List of track type IDs (0 for melody, 1 for chord)
         """
-        # Create a mapping from program number to track type
-        program_to_track = {}
-        for track in tracks_info:
-            program = track.get('program', -1)
-            track_type = track.get('type', '').lower()
+        chord_start_id = vocabulary.get(CHORD_START_TOKEN_NAME)
+        melody_start_id = vocabulary.get(MELODY_START_TOKEN_NAME)
 
-            if track_type == 'melody':
-                program_to_track[program] = TRACK_TYPE_MELODY
-            elif track_type == 'chord':
-                program_to_track[program] = TRACK_TYPE_CHORD
-            else:
-                # Fallback: use heuristic
-                program_to_track[program] = get_track_type_from_program(program)
-
-        # Program token range
-        program_start, program_end = TOKEN_RANGES['program']
-
-        # Track the current track type (default to melody)
         current_track_type = TRACK_TYPE_MELODY
         track_ids = []
 
         for token in tokens:
-            # Check if this is a Program token
-            if program_start <= token <= program_end:
-                # Extract program number from token
-                # Program tokens are Program_0 to Program_127 and Program_-1
-                # Token IDs: 266-394
-                # Program_0 is 266, Program_127 is 393, Program_-1 is 394
-                if token == 394:  # Program_-1
-                    program_num = -1
-                else:
-                    program_num = token - 266
-
-                # Update current track type based on program
-                current_track_type = program_to_track.get(
-                    program_num,
-                    get_track_type_from_program(program_num)
-                )
-
+            if token == chord_start_id:
+                current_track_type = TRACK_TYPE_CHORD
+            elif token == melody_start_id:
+                current_track_type = TRACK_TYPE_MELODY
             track_ids.append(current_track_type)
 
         return track_ids
@@ -171,12 +140,12 @@ class MusicTokenDataset(Dataset):
         with open(file_path, 'r') as f:
             data = json.load(f)
 
-        # Extract token sequence and track information
+        # Extract token sequence and vocabulary
         tokens = data['global_tokens']
-        tracks_info = data.get('tracks', [])
+        vocabulary = data.get('vocabulary', {})
 
         # Generate track IDs BEFORE adding special tokens
-        track_ids = self._generate_track_ids(tokens, tracks_info)
+        track_ids = self._generate_track_ids(tokens, vocabulary)
 
         # Add special tokens
         if self.add_bos:
