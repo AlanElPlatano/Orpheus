@@ -371,7 +371,8 @@ class TwoStageGenerator:
                         top_p=self.config.top_p,
                         generated_tokens=input_ids,
                         repetition_penalty=self.config.repetition_penalty,
-                        apply_constraints=True
+                        apply_constraints=True,
+                        vocab_info=self.vocab_info
                     )
                 else:
                     # Use standard sampling without track constraints
@@ -392,11 +393,6 @@ class TwoStageGenerator:
                 # Add to sequence
                 generated_tokens.append(next_token_id)
                 input_ids = torch.cat([input_ids, next_token], dim=1)
-
-                # For two-stage generation, we could stop chord generation after
-                # a certain number of bars. For now, we'll use the standard stopping.
-                # In a more advanced implementation, we might stop when we detect
-                # a good breakpoint for adding melody.
 
         return generated_tokens
 
@@ -494,7 +490,8 @@ class TwoStageGenerator:
                         top_p=self.config.top_p,
                         generated_tokens=input_ids,
                         repetition_penalty=self.config.repetition_penalty,
-                        apply_constraints=True
+                        apply_constraints=True,
+                        vocab_info=self.vocab_info
                     )
                 else:
                     # Use standard sampling without track constraints

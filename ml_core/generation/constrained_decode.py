@@ -315,7 +315,7 @@ def apply_all_constraints(
     """
     from ..model.constraints import apply_monophony_constraint
 
-    logits = apply_monophony_constraint(logits, state)
+    logits = apply_monophony_constraint(logits, state, vocab_info=vocab_info)
 
     # Apply chord sustain constraint (enhanced version)
     logits = apply_chord_sustain_constraint_enhanced(logits, state, vocab_info)
