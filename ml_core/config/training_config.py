@@ -36,7 +36,7 @@ class TrainingConfig:
     # Data settings
     # ========================================================================
     data_dir: Path = Path("processed")
-    split_manifest_path: Path = Path("pytorch/data/splits/split_manifest.json")
+    split_manifest_path: Path = Path("ml_core/data/splits/split_manifest.json")
     batch_size: int = DEFAULT_BATCH_SIZE
     num_workers: int = 0  # 0 = load data in main process (safer on Windows)
     use_cache: bool = False  # Cache dataset in memory
@@ -111,7 +111,7 @@ class TrainingConfig:
     # Logging
     # ========================================================================
     log_interval: int = LOG_INTERVAL
-    log_dir: Path = Path("pytorch/logs")
+    log_dir: Path = Path("ml_core/logs")
     use_tensorboard: bool = True
     use_wandb: bool = False  # Weights & Biases integration
     wandb_project: Optional[str] = "Orpheus"
@@ -120,7 +120,7 @@ class TrainingConfig:
     # ========================================================================
     # Checkpointing
     # ========================================================================
-    checkpoint_dir: Path = Path("pytorch/checkpoints")
+    checkpoint_dir: Path = Path("ml_core/checkpoints")
     checkpoint_interval: int = CHECKPOINT_INTERVAL
     save_best_only: bool = False  # If True, only save best model
     max_checkpoints_to_keep: int = MAX_CHECKPOINTS_TO_KEEP
