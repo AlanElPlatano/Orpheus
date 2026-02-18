@@ -7,7 +7,7 @@ chord sustain) live in ml_core/generation/constrained_decode.py.
 """
 
 import torch
-from typing import Optional, List
+from typing import Optional, List, Set
 from ..data.constants import TOKEN_RANGES
 
 
@@ -54,6 +54,7 @@ class GenerationState:
 def apply_monophony_constraint(
     logits: torch.Tensor,
     state: GenerationState,
+    vocab_info: Optional['VocabularyInfo'] = None,
     mask_value: float = float('-inf')
 ) -> torch.Tensor:
     """
@@ -65,21 +66,25 @@ def apply_monophony_constraint(
     Args:
         logits: Model output logits, shape [batch_size, vocab_size]
         state: Current generation state
+        vocab_info: Vocabulary info with accurate pitch token set (preferred).
+                    Falls back to TOKEN_RANGES if not provided.
         mask_value: Value to use for masked positions
 
     Returns:
         Masked logits with monophony constraint applied
-
-    Due to this, our AI specific implementation remains mostly
-    constrained to this specific use case.
     """
     if state.current_track != 'melody':
         return logits
 
     if state.has_active_melody_notes():
-        # Block all pitch tokens
-        pitch_start, pitch_end = TOKEN_RANGES['pitch']
-        logits[:, pitch_start:pitch_end+1] = mask_value
+        if vocab_info is not None:
+            # Use accurate pitch token set from vocabulary
+            for token_id in vocab_info.pitch_tokens:
+                logits[:, token_id] = mask_value
+        else:
+            # Fallback to TOKEN_RANGES
+            pitch_start, pitch_end = TOKEN_RANGES['pitch']
+            logits[:, pitch_start:pitch_end+1] = mask_value
 
     return logits
 
