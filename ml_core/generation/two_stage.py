@@ -346,6 +346,9 @@ class TwoStageGenerator:
                 constrained_logits[:, EOS_TOKEN_ID] = float('-inf')
 
                 # Sample next token
+                # Note: repetition_penalty=1.0 (disabled) because the broad penalty
+                # suppresses structural tokens (BAR, Position, etc.) that must repeat.
+                # Degenerate repetition is handled by apply_consecutive_repetition_constraint.
                 if self.use_track_aware_sampling:
                     next_token, probs = sample_next_token_track_aware(
                         constrained_logits,
@@ -354,7 +357,7 @@ class TwoStageGenerator:
                         top_k=self.config.top_k,
                         top_p=self.config.top_p,
                         generated_tokens=input_ids,
-                        repetition_penalty=self.config.repetition_penalty,
+                        repetition_penalty=1.0,
                         apply_constraints=True,
                         vocab_info=self.vocab_info
                     )
@@ -365,7 +368,7 @@ class TwoStageGenerator:
                         top_k=self.config.top_k,
                         top_p=self.config.top_p,
                         generated_tokens=input_ids,
-                        repetition_penalty=self.config.repetition_penalty
+                        repetition_penalty=1.0
                     )
 
                 next_token_id = next_token.item()
@@ -481,6 +484,9 @@ class TwoStageGenerator:
                     else TRACK_TYPE_MELODY
                 )
 
+                # Note: repetition_penalty=1.0 (disabled) because the broad penalty
+                # suppresses structural tokens (BAR, Position, etc.) that must repeat.
+                # Degenerate repetition is handled by apply_consecutive_repetition_constraint.
                 if self.use_track_aware_sampling:
                     next_token, probs = sample_next_token_track_aware(
                         constrained_logits,
@@ -489,7 +495,7 @@ class TwoStageGenerator:
                         top_k=self.config.top_k,
                         top_p=self.config.top_p,
                         generated_tokens=input_ids,
-                        repetition_penalty=self.config.repetition_penalty,
+                        repetition_penalty=1.0,
                         apply_constraints=True,
                         vocab_info=self.vocab_info
                     )
@@ -500,7 +506,7 @@ class TwoStageGenerator:
                         top_k=self.config.top_k,
                         top_p=self.config.top_p,
                         generated_tokens=input_ids,
-                        repetition_penalty=self.config.repetition_penalty
+                        repetition_penalty=1.0
                     )
 
                 next_token_id = next_token.item()
