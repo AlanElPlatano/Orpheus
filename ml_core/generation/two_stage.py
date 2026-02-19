@@ -342,6 +342,9 @@ class TwoStageGenerator:
                     generated_tokens=generated_tokens
                 )
 
+                # Block EOS during chord stage - we must reach MelodyStart
+                constrained_logits[:, EOS_TOKEN_ID] = float('-inf')
+
                 # Sample next token
                 if self.use_track_aware_sampling:
                     next_token, probs = sample_next_token_track_aware(
@@ -466,6 +469,11 @@ class TwoStageGenerator:
                     self.config.key,
                     generated_tokens=generated_tokens
                 )
+
+                # Block EOS until minimum bars are generated
+                num_bars = sum(1 for t in generated_tokens if t == BAR_TOKEN_ID)
+                if num_bars < self.config.min_generation_bars:
+                    constrained_logits[:, EOS_TOKEN_ID] = float('-inf')
 
                 # Use current track state for track-aware sampling
                 current_track_type = (
