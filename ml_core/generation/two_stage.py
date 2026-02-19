@@ -156,8 +156,9 @@ class TwoStageGenerator:
         # Use provided temperature or fall back to config
         effective_temperature = temperature if temperature is not None else self.config.temperature
 
-        # Stage 1: Generate chord progression
-        logger.info("Stage 1: Generating chord progression...")
+        # Stage 1: Generate structural preamble + first chord section
+        # Stops at MelodyStart (typically ~15-20 tokens)
+        logger.info("Stage 1: Generating structural preamble and chords...")
         chord_tokens = self._generate_chords(
             prompt_tokens,
             effective_temperature,
@@ -166,34 +167,11 @@ class TwoStageGenerator:
             time_sig_ids
         )
 
-        logger.info(f"Stage 1 complete: {len(chord_tokens)} chord tokens generated")
+        logger.info(f"Stage 1 complete: {len(chord_tokens)} tokens (up to MelodyStart)")
 
-        # Check if chord sequence is too long for Stage 2
-        # Reserve space for melody generation (25% of context length)
-        # For default 2048 context: 512 tokens (original behavior)
-        # For low_memory 512 context: 128 tokens (scaled appropriately)
-        melody_reservation = max(int(self.config.max_length * 0.25), 64)
-        max_chord_context = self.config.max_length - melody_reservation
-
-        # Sanity check: ensure we have at least some space for chords
-        if max_chord_context < 32:
-            raise ValueError(
-                f"Context length ({self.config.max_length}) is too small for two-stage generation. "
-                f"Need at least {melody_reservation + 32} tokens."
-            )
-
-        if len(chord_tokens) > max_chord_context:
-            original_length = len(chord_tokens)
-            logger.warning(
-                f"Chord sequence too long ({original_length} tokens), "
-                f"truncating to {max_chord_context} tokens to reserve space for melody generation. "
-                f"Keeping most recent {max_chord_context} tokens for harmonic context."
-            )
-            # Keep the beginning of the tokens
-            chord_tokens = chord_tokens[:max_chord_context]
-
-        # Stage 2: Generate melody conditioned on chords
-        logger.info("Stage 2: Generating melody...")
+        # Stage 2: Continue generation from MelodyStart
+        # The model naturally produces interleaved chord/melody sections
+        logger.info("Stage 2: Continuing full sequence generation...")
         full_sequence = self._generate_melody(
             chord_tokens,
             effective_temperature,
@@ -291,10 +269,11 @@ class TwoStageGenerator:
         time_sig_ids: Optional[torch.Tensor] = None
     ) -> List[int]:
         """
-        Generate chord progression (Stage 1).
+        Generate first bar's structural preamble and chord progression (Stage 1).
 
-        In this stage, we mask melody-related tokens to ensure only
-        chord progressions are generated.
+        Generates tokens until MelodyStart is produced, which signals the
+        transition to melody generation. This matches the training data format:
+        BOS -> BAR -> Tempo -> ChordStart -> [chord notes] -> MelodyStart
 
         Args:
             prompt_tokens: Optional conditioning tokens
@@ -304,7 +283,7 @@ class TwoStageGenerator:
             time_sig_ids: Optional time signature conditioning tensor, shape [1]
 
         Returns:
-            List of chord token IDs
+            List of token IDs up to and including MelodyStart
         """
         # Initialize sequence with BOS token
         if prompt_tokens is not None:
@@ -323,6 +302,8 @@ class TwoStageGenerator:
         # Convert to tensor
         input_ids = torch.tensor([generated_tokens], dtype=torch.long, device=self.device)
 
+        melody_start_id = self.vocab_info.melody_start_token_id
+
         with torch.no_grad():
             while True:
                 # Check stop conditions
@@ -335,10 +316,11 @@ class TwoStageGenerator:
                     break
 
                 # Generate track IDs for current sequence
-                # For chord generation, default to TRACK_TYPE_CHORD
-                track_ids_tensor = self._generate_track_ids(generated_tokens, default_track_type=TRACK_TYPE_CHORD)
+                # Default to MELODY to match training data: preamble tokens
+                # (BOS, BAR, TimeSig, Tempo) are all MELODY until ChordStart appears
+                track_ids_tensor = self._generate_track_ids(generated_tokens, default_track_type=TRACK_TYPE_MELODY)
 
-                # Forward pass through model (with track_ids and conditioning if available)
+                # Forward pass through model
                 logits, _ = self.model(
                     input_ids,
                     track_ids=track_ids_tensor,
@@ -351,7 +333,6 @@ class TwoStageGenerator:
                 next_token_logits = logits[:, -1, :]  # [1, vocab_size]
 
                 # Apply musical constraints
-                # For chord generation, we don't apply monophony but do apply sustain
                 constrained_logits = apply_all_constraints(
                     next_token_logits,
                     state,
@@ -361,12 +342,11 @@ class TwoStageGenerator:
                     generated_tokens=generated_tokens
                 )
 
-                # Sample next token with track-aware constraints
+                # Sample next token
                 if self.use_track_aware_sampling:
-                    # Use track-aware sampling for CHORD track
                     next_token, probs = sample_next_token_track_aware(
                         constrained_logits,
-                        track_type=TRACK_TYPE_CHORD,  # Chord track constraints
+                        track_type=TRACK_TYPE_CHORD,
                         temperature=effective_temperature,
                         top_k=self.config.top_k,
                         top_p=self.config.top_p,
@@ -376,7 +356,6 @@ class TwoStageGenerator:
                         vocab_info=self.vocab_info
                     )
                 else:
-                    # Use standard sampling without track constraints
                     next_token, probs = sample_next_token(
                         constrained_logits,
                         temperature=effective_temperature,
@@ -394,6 +373,14 @@ class TwoStageGenerator:
                 # Add to sequence
                 generated_tokens.append(next_token_id)
                 input_ids = torch.cat([input_ids, next_token], dim=1)
+
+                # Stop when MelodyStart is generated - hand off to melody stage
+                if next_token_id == melody_start_id:
+                    logger.info(
+                        f"Chord generation complete: MelodyStart generated after "
+                        f"{len(generated_tokens)} tokens"
+                    )
+                    break
 
         return generated_tokens
 
@@ -406,12 +393,15 @@ class TwoStageGenerator:
         time_sig_ids: Optional[torch.Tensor] = None
     ) -> List[int]:
         """
-        Generate melody conditioned on chord progression (Stage 2).
+        Continue generation from Stage 1 output (Stage 2).
 
-        Uses the chord tokens as context and generates melody on top.
+        Takes the structural preamble + chord tokens from Stage 1 and continues
+        generating the full sequence. The model naturally produces interleaved
+        chord and melody sections (ChordStart/MelodyStart markers), and the
+        state tracking + constraints handle each section appropriately.
 
         Args:
-            chord_tokens: Generated chord tokens from Stage 1
+            chord_tokens: Tokens from Stage 1 (up to and including MelodyStart)
             temperature: Temperature for sampling (uses config if None)
             key_ids: Optional key signature conditioning tensor, shape [1]
             tempo_values: Optional tempo conditioning tensor, shape [1]
@@ -423,7 +413,7 @@ class TwoStageGenerator:
         # Start with chord tokens as context
         generated_tokens = chord_tokens.copy()
 
-        # Initialize generation state
+        # Initialize generation state - 'melody' since Stage 1 ends at MelodyStart
         state = GenerationState()
         state.current_track = 'melody'
         state.current_key = self.config.key
@@ -435,10 +425,7 @@ class TwoStageGenerator:
         input_ids = torch.tensor([generated_tokens], dtype=torch.long, device=self.device)
 
         with torch.no_grad():
-            melody_tokens_generated = 0
-            max_melody_tokens = self.config.max_length - len(chord_tokens)
-
-            while melody_tokens_generated < max_melody_tokens:
+            while len(generated_tokens) < self.config.max_length:
                 # Check stop conditions
                 should_stop, reason = should_stop_generation(
                     generated_tokens, self.config, self.vocab_info
@@ -451,14 +438,13 @@ class TwoStageGenerator:
                 # Truncate input if it exceeds context length
                 if input_ids.size(1) > self.model.max_len:
                     input_ids = input_ids[:, -self.model.max_len:]
-                    # Also need to truncate generated_tokens to match
                     generated_tokens = generated_tokens[-self.model.max_len:]
 
-                # Generate track IDs for current sequence
-                # For melody generation, default to TRACK_TYPE_MELODY
+                # Generate track IDs - uses ChordStart/MelodyStart markers in the
+                # sequence to assign correct track types dynamically
                 track_ids_tensor = self._generate_track_ids(generated_tokens, default_track_type=TRACK_TYPE_MELODY)
 
-                # Forward pass through model (with track_ids and conditioning if available)
+                # Forward pass through model
                 logits, _ = self.model(
                     input_ids,
                     track_ids=track_ids_tensor,
@@ -470,8 +456,8 @@ class TwoStageGenerator:
                 # Get logits for last token
                 next_token_logits = logits[:, -1, :]
 
-                # Apply musical constraints
-                # For melody, we apply monophony constraint
+                # Apply musical constraints (monophony auto-applied in melody,
+                # skipped in chord sections via state.current_track)
                 constrained_logits = apply_all_constraints(
                     next_token_logits,
                     state,
@@ -481,12 +467,16 @@ class TwoStageGenerator:
                     generated_tokens=generated_tokens
                 )
 
-                # Sample next token with track-aware constraints
+                # Use current track state for track-aware sampling
+                current_track_type = (
+                    TRACK_TYPE_CHORD if state.current_track == 'chord'
+                    else TRACK_TYPE_MELODY
+                )
+
                 if self.use_track_aware_sampling:
-                    # Use track-aware sampling for MELODY track
                     next_token, probs = sample_next_token_track_aware(
                         constrained_logits,
-                        track_type=TRACK_TYPE_MELODY,  # Melody track constraints
+                        track_type=current_track_type,
                         temperature=effective_temperature,
                         top_k=self.config.top_k,
                         top_p=self.config.top_p,
@@ -496,7 +486,6 @@ class TwoStageGenerator:
                         vocab_info=self.vocab_info
                     )
                 else:
-                    # Use standard sampling without track constraints
                     next_token, probs = sample_next_token(
                         constrained_logits,
                         temperature=effective_temperature,
@@ -508,14 +497,12 @@ class TwoStageGenerator:
 
                 next_token_id = next_token.item()
 
-                # Update generation state
+                # Update generation state (handles ChordStart/MelodyStart transitions)
                 update_generation_state(state, next_token_id, self.vocab_info)
 
                 # Add to sequence
                 generated_tokens.append(next_token_id)
                 input_ids = torch.cat([input_ids, next_token], dim=1)
-
-                melody_tokens_generated += 1
 
         # Add EOS token if not present
         if EOS_TOKEN_ID not in generated_tokens:
