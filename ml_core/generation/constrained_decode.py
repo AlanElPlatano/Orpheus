@@ -197,6 +197,50 @@ def update_generation_state(
 # Constraint Application
 # ============================================================================
 
+def apply_grammar_constraint(
+    logits: torch.Tensor,
+    generated_tokens: List[int],
+    vocab_info: 'VocabularyInfo',
+    mask_value: float = float('-inf')
+) -> torch.Tensor:
+    """
+    Enforce REMI note event grammar: Pitch -> Velocity -> Duration.
+
+    After a Pitch token, only Velocity tokens are allowed.
+    After a Velocity token, only Duration tokens are allowed.
+    This prevents the model from generating broken note events.
+
+    Args:
+        logits: Model output logits, shape [batch_size, vocab_size]
+        generated_tokens: Previously generated token IDs
+        vocab_info: Vocabulary information
+        mask_value: Value to use for masked positions
+
+    Returns:
+        Grammar-constrained logits
+    """
+    if not generated_tokens:
+        return logits
+
+    last_token = generated_tokens[-1]
+
+    # After a Pitch token, only Velocity tokens are allowed
+    if vocab_info.is_pitch_token(last_token):
+        constrained = torch.full_like(logits, mask_value)
+        for token_id in vocab_info.velocity_tokens:
+            constrained[:, token_id] = logits[:, token_id]
+        return constrained
+
+    # After a Velocity token, only Duration tokens are allowed
+    if last_token in vocab_info.velocity_tokens:
+        constrained = torch.full_like(logits, mask_value)
+        for token_id in vocab_info.duration_tokens:
+            constrained[:, token_id] = logits[:, token_id]
+        return constrained
+
+    return logits
+
+
 def apply_consecutive_repetition_constraint(
     logits: torch.Tensor,
     generated_tokens: List[int],
@@ -400,6 +444,10 @@ def apply_all_constraints(
     """
     from ..model.constraints import apply_monophony_constraint
 
+    # Apply REMI grammar constraint (Pitch -> Velocity -> Duration)
+    if generated_tokens is not None:
+        logits = apply_grammar_constraint(logits, generated_tokens, vocab_info)
+
     logits = apply_monophony_constraint(logits, state, vocab_info=vocab_info)
 
     # Apply chord sustain constraint (enhanced version)
@@ -502,6 +550,7 @@ __all__ = [
     'get_diatonic_pitches',
     'get_diatonic_token_ids',
     'update_generation_state',
+    'apply_grammar_constraint',
     'apply_consecutive_repetition_constraint',
     'apply_diatonic_boost_enhanced',
     'apply_chord_sustain_constraint_enhanced',
