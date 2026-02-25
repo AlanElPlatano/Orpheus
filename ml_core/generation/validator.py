@@ -209,13 +209,34 @@ class ConstraintValidator:
         """
         Validate monophony constraint (no overlapping melody notes).
 
+        Only checks monophony in melody sections (after MelodyStart marker).
+        Chord sections are polyphonic by design and are excluded.
+
         Args:
             token_ids: Token sequence
             report: Validation report to update
         """
         active_notes: Set[int] = set()
+        in_melody = False
+
+        chord_start_id = self.vocab_info.chord_start_token_id
+        melody_start_id = self.vocab_info.melody_start_token_id
 
         for i, token_id in enumerate(token_ids):
+            # Track section switches
+            if token_id == melody_start_id:
+                in_melody = True
+                active_notes.clear()
+                continue
+            elif token_id == chord_start_id:
+                in_melody = False
+                active_notes.clear()
+                continue
+
+            # Only check monophony in melody sections
+            if not in_melody:
+                continue
+
             # Check if this is a pitch token
             if self.vocab_info.is_pitch_token(token_id):
                 token_name = self.vocab_info.get_token_name(token_id)
@@ -249,32 +270,73 @@ class ConstraintValidator:
         report: ValidationReport
     ) -> None:
         """
-        Validate that pitch tokens are followed by duration tokens.
+        Validate note event structure: Pitch -> Velocity -> Duration.
+
+        In REMI format, note events follow the order:
+        Position -> Pitch -> Velocity -> Duration
+
+        This validates that after a Pitch token, a Velocity token follows,
+        and after Velocity, a Duration token follows.
 
         Args:
             token_ids: Token sequence
             report: Validation report to update
         """
-        expecting_duration = False
+        # States: 'none' -> pitch seen -> 'expect_velocity' -> velocity seen -> 'expect_duration'
+        state = 'none'
+        pitch_pos = -1
 
         for i, token_id in enumerate(token_ids):
             if self.vocab_info.is_pitch_token(token_id):
-                expecting_duration = True
-
-            elif self.vocab_info.is_duration_token(token_id):
-                expecting_duration = False
-
-            elif expecting_duration and not self.vocab_info.is_special_token(token_id):
-                # We expected a duration token but got something else
-                # (Allow special tokens like BAR to appear between pitch and duration)
-                if not is_position_token(token_id):
-                    token_name = self.vocab_info.get_token_name(token_id)
+                # If we were already expecting velocity/duration, that's a violation
+                if state == 'expect_velocity':
                     report.add_violation(
                         "token_sequence",
-                        f"Expected duration token after pitch at position {i-1}, "
-                        f"got {token_name} instead"
+                        f"Expected velocity token after pitch at position {pitch_pos}, "
+                        f"got another pitch instead"
                     )
-                    expecting_duration = False
+                elif state == 'expect_duration':
+                    report.add_violation(
+                        "token_sequence",
+                        f"Expected duration token after velocity at position {pitch_pos}, "
+                        f"got another pitch instead"
+                    )
+                state = 'expect_velocity'
+                pitch_pos = i
+
+            elif token_id in self.vocab_info.velocity_tokens:
+                if state == 'expect_velocity':
+                    # Correct: velocity after pitch
+                    state = 'expect_duration'
+                else:
+                    # Velocity without preceding pitch
+                    state = 'none'
+
+            elif self.vocab_info.is_duration_token(token_id):
+                # Duration completes the note event
+                state = 'none'
+
+            elif self.vocab_info.is_special_token(token_id) or is_position_token(token_id):
+                # Allow structural tokens without breaking the state
+                pass
+
+            elif state == 'expect_velocity':
+                token_name = self.vocab_info.get_token_name(token_id)
+                report.add_violation(
+                    "token_sequence",
+                    f"Expected velocity token after pitch at position {pitch_pos}, "
+                    f"got {token_name} instead"
+                )
+                state = 'none'
+
+            elif state == 'expect_duration':
+                token_name = self.vocab_info.get_token_name(token_id)
+                report.add_violation(
+                    "token_sequence",
+                    f"Expected duration token after velocity at position {pitch_pos}, "
+                    f"got {token_name} instead"
+                )
+                state = 'none'
 
 
 def validate_generated_sequence(

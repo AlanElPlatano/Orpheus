@@ -19,9 +19,10 @@ from ..data.vocab import VocabularyInfo
 from ..data.constants import (
     BOS_TOKEN_ID,
     EOS_TOKEN_ID,
-    PAD_TOKEN_ID
+    PAD_TOKEN_ID,
 )
-from .chord_sustain import apply_chord_sustain
+from .chord_sustain import apply_chord_sustain as _apply_chord_sustain
+from midi_parser.core.token_reorderer import restore_program_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,12 @@ def tokens_to_midi(
             return False, None, "No tokens to decode after removing special tokens"
 
         logger.info(f"Converting {len(cleaned_tokens)} tokens to MIDI")
+
+        # Restore Program tokens for miditok compatibility
+        # The pipeline replaces per-note Program tokens with CHORD_START/MELODY_START markers
+        # MidiTok needs the original Program tokens to assign notes to instruments
+        cleaned_tokens = restore_program_tokens(cleaned_tokens, vocab_info.token_to_id)
+        logger.info(f"Restored program tokens, sequence length: {len(cleaned_tokens)}")
 
         # Create miditok tokenizer with same config used for training
         from midi_parser.core.tokenizer_manager import TokenizerManager
@@ -142,7 +149,7 @@ def tokens_to_midi(
         # Optionally apply chord sustain post-processing
         # This extends chord durations to the start of the next chord
         if apply_chord_sustain:
-            midi = apply_chord_sustain(midi)
+            midi = _apply_chord_sustain(midi)
 
         # Ensure output directory exists
         output_path.parent.mkdir(parents=True, exist_ok=True)

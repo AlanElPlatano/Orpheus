@@ -19,7 +19,9 @@ from typing import Dict, List
 class SpecialTokens(IntEnum):
     """
     Special token IDs from the REMI vocabulary.
-    These are fixed across all files.
+    PAD through BAR are fixed MidiTok IDs.
+    CHORD_START and MELODY_START are appended after MidiTok's vocabulary
+    during post-processing (their actual IDs come from the vocabulary).
     """
     PAD = 0      # Padding token for batch processing
     BOS = 1      # Beginning of sequence
@@ -35,22 +37,29 @@ EOS_TOKEN_ID = SpecialTokens.EOS
 MASK_TOKEN_ID = SpecialTokens.MASK
 BAR_TOKEN_ID = SpecialTokens.BAR
 
+# Structural token names (IDs are assigned dynamically based on MidiTok vocab size)
+CHORD_START_TOKEN_NAME = "ChordStart_None"
+MELODY_START_TOKEN_NAME = "MelodyStart_None"
+
 
 # ============================================================================
 # Token Range Constants
 # ============================================================================
 
-# Based on the vocabulary structure from the JSON
+# DEPRECATED: Prefer VocabularyInfo token sets (pitch_tokens, program_tokens,
+# etc.) loaded from the JSON vocabulary instead. These hardcoded ranges are a
+# fallback and must be kept in sync with the tokenizer vocabulary.
+# Last synced: 2026-02-18 from processed vocabulary (533 tokens).
 TOKEN_RANGES = {
-    'pitch': (5, 53),           # Pitch_36 to Pitch_84
-    'velocity': (54, 61),       # Velocity_15 to Velocity_127
-    'duration': (62, 77),       # Duration_0.1.4 to Duration_4.0.4
-    'position': (78, 125),      # Position_0 to Position_47
-    'pitch_drum': (126, 187),   # PitchDrum_27 to PitchDrum_88
-    'chord': (188, 201),        # Chord tokens
-    'tempo': (202, 265),        # Tempo_40.0 to Tempo_250.0
-    'program': (266, 394),      # Program_0 to Program_127 and Program_-1
-    'time_sig': (395, 403),     # TimeSig_3/8 to TimeSig_4/4
+    'pitch': (5, 92),           # Pitch_21 to Pitch_108 (88 tokens)
+    'velocity': (93, 108),      # Velocity_8 to Velocity_127 (16 tokens)
+    'duration': (109, 156),     # Duration tokens (48 tokens)
+    'position': (157, 252),     # Position_0 to Position_95 (96 tokens)
+    'pitch_drum': (253, 314),   # PitchDrum tokens (62 tokens)
+    'chord': (315, 328),        # Chord tokens (14 tokens)
+    'tempo': (329, 392),        # Tempo tokens (64 tokens)
+    'program': (393, 521),      # Program_-1 to Program_127 (129 tokens)
+    'time_sig': (522, 530),     # TimeSig tokens (9 tokens)
 }
 
 
@@ -81,8 +90,8 @@ MAX_DURATION_TICKS = 4.0 * BEAT_RESOLUTION  # 4.0 beats
 # Model Architecture Constants
 # ============================================================================
 
-# From the actual vocabulary extracted from tokenizer
-VOCAB_SIZE = 531  # Total vocabulary size (531 tokens in REMI vocab)
+# Total vocabulary size: 531 base REMI MidiTok tokens + 2 structural tokens (ChordStart, MelodyStart)
+VOCAB_SIZE = 533
 CONTEXT_LENGTH = 2048  # Maximum sequence length
 HIDDEN_DIM = 512  # Model dimension
 NUM_LAYERS = 8  # Transformer layers
@@ -110,19 +119,19 @@ WEIGHT_DECAY = 0.01
 # Sampling parameters
 DEFAULT_TEMPERATURE = 0.8
 DEFAULT_TOP_P = 0.95
-DEFAULT_REPETITION_PENALTY = 1.1
+DEFAULT_REPETITION_PENALTY = 1.3
 
 # Quality vs Creative modes
 QUALITY_MODE_PARAMS = {
     'temperature': 0.8,
     'top_p': 0.95,
-    'repetition_penalty': 1.1
+    'repetition_penalty': 1.3
 }
 
 CREATIVE_MODE_PARAMS = {
     'temperature': 1.1,
     'top_p': 0.92,
-    'repetition_penalty': 1.05
+    'repetition_penalty': 1.2
 }
 
 # Retry logic
@@ -377,8 +386,13 @@ def get_token_type(token_id: int) -> str:
 
 
 def is_special_token(token_id: int) -> bool:
-    """Check if token is a special token."""
+    """Check if token is a special token (PAD, BOS, EOS, MASK, BAR)."""
     return token_id in {PAD_TOKEN_ID, BOS_TOKEN_ID, EOS_TOKEN_ID, MASK_TOKEN_ID, BAR_TOKEN_ID}
+
+
+def is_structural_token_name(token_name: str) -> bool:
+    """Check if a token name is one of the structural tokens (ChordStart, MelodyStart)."""
+    return token_name in {CHORD_START_TOKEN_NAME, MELODY_START_TOKEN_NAME}
 
 
 def is_pitch_token(token_id: int) -> bool:
@@ -447,6 +461,10 @@ __all__ = [
     'EOS_TOKEN_ID',
     'MASK_TOKEN_ID',
     'BAR_TOKEN_ID',
+
+    # Structural token names
+    'CHORD_START_TOKEN_NAME',
+    'MELODY_START_TOKEN_NAME',
 
     # Token ranges
     'TOKEN_RANGES',
@@ -528,6 +546,7 @@ __all__ = [
     # Utility functions
     'get_token_type',
     'is_special_token',
+    'is_structural_token_name',
     'is_pitch_token',
     'is_duration_token',
     'is_position_token',

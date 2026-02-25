@@ -242,7 +242,7 @@ Because this process is very long, i have implemented a checkpoint system:
 
 ![Screenshot of the Training tab of the Gradio GUI, scrolled down to show the 'Checkpoint' options](assets/checkpoints_system.png "Checkpoints in the Training Tab")
 
-During training, checkpoints are automatically saved **every 2000 steps** (or every 50 steps for quick_test, 1000 for overfit). The system keeps the 5 most recent checkpoints and automatically deletes older ones to save disk space. Each checkpoint contains your model's current state, optimizer settings, and training progress, you can find each checkpoint in pytorch/checkpoints with a subfolder for every model you've trained.
+During training, checkpoints are automatically saved **every 2000 steps** (or every 50 steps for quick_test, 1000 for overfit). The system keeps the 5 most recent checkpoints and automatically deletes older ones to save disk space. Each checkpoint contains your model's current state, optimizer settings, and training progress, you can find each checkpoint in ml_core/checkpoints with a subfolder for every model you've trained.
 
 In this menu you can find several options, first we have a "Select Checkpoint" menu that lists all the current checkpoints, you can select one from the list and then click "Load Checkpoint", it doesn't show up on the list you can try the "Refresh List" button. Below it you can find a status windows along with another window that lists all the checkpoints in a non-interactive list, along with its own List and Refresh buttons.
 

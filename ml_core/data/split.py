@@ -6,7 +6,7 @@ Each original song has 12 transpositions (including the original key).
 We ensure that all transpositions of the same song stay together in the same split.
 """
 
-# python pytorch/data/split.py
+# python ml_core/data/split.py
 
 import json
 import random
@@ -223,7 +223,7 @@ def main():
     # Setup paths
     project_root = Path(__file__).parent.parent.parent
     processed_dir = project_root / 'processed'
-    output_dir = project_root / 'pytorch' / 'data' / 'splits'
+    output_dir = project_root / 'ml_core' / 'data' / 'splits'
 
     print("=" * 60)
     print("Data Splitting Script")

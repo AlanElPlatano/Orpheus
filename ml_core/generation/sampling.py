@@ -312,6 +312,7 @@ def get_top_k_tokens(
 def apply_track_constraints(
     logits: torch.Tensor,
     track_type: int,
+    vocab_info: Optional['VocabularyInfo'] = None,
     mask_value: float = float('-inf')
 ) -> torch.Tensor:
     """
@@ -324,6 +325,8 @@ def apply_track_constraints(
     Args:
         logits: Model output logits, shape [batch_size, vocab_size]
         track_type: Track type ID (0=MELODY, 1=CHORD)
+        vocab_info: Vocabulary info with accurate duration token set (preferred).
+                    Falls back to TOKEN_RANGES if not provided.
         mask_value: Value to assign to masked tokens
 
     Returns:
@@ -331,28 +334,25 @@ def apply_track_constraints(
     """
     filtered_logits = logits.clone()
 
-    # Get duration token range
-    duration_start, duration_end = TOKEN_RANGES['duration']
-
-    # Define short duration tokens (first 3 tokens = durations < 0.5 beats)
-    # Duration tokens: 62-77 (Duration_0.1.4 to Duration_4.0.4)
-    # Short durations: 62-64 (Duration_0.1.4, Duration_0.2.4, Duration_0.3.4)
-    short_duration_tokens = list(range(duration_start, duration_start + 3))
+    if vocab_info is not None:
+        # Use accurate duration tokens from vocabulary
+        # Sort duration tokens by ID (lowest IDs = shortest durations in REMI)
+        sorted_durations = sorted(vocab_info.duration_tokens)
+        # Mask the first 3 (shortest) duration tokens
+        short_duration_tokens = sorted_durations[:3]
+    else:
+        # Fallback to TOKEN_RANGES
+        duration_start, duration_end = TOKEN_RANGES['duration']
+        short_duration_tokens = list(range(duration_start, duration_start + 3))
 
     if track_type == TRACK_TYPE_MELODY:
-        # For melody: penalize very short durations (indicates polyphony)
-        # Mask out the shortest duration tokens
         for token_id in short_duration_tokens:
             filtered_logits[:, token_id] = mask_value
-
         logger.debug(f"Applied MELODY constraints: masked {len(short_duration_tokens)} short duration tokens")
 
     elif track_type == TRACK_TYPE_CHORD:
-        # For chords: penalize short durations (chords should sustain)
-        # Mask out short duration tokens more aggressively
         for token_id in short_duration_tokens:
             filtered_logits[:, token_id] = mask_value
-
         logger.debug(f"Applied CHORD constraints: masked {len(short_duration_tokens)} short duration tokens")
 
     return filtered_logits
@@ -367,7 +367,8 @@ def sample_next_token_track_aware(
     generated_tokens: Optional[torch.Tensor] = None,
     repetition_penalty: float = 1.0,
     deterministic: bool = False,
-    apply_constraints: bool = True
+    apply_constraints: bool = True,
+    vocab_info: Optional['VocabularyInfo'] = None
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Sample next token with track-aware constraints.
@@ -385,6 +386,7 @@ def sample_next_token_track_aware(
         repetition_penalty: Repetition penalty factor (default: 1.0)
         deterministic: If True, use argmax instead of sampling
         apply_constraints: If True, apply track-specific constraints (default: True)
+        vocab_info: Vocabulary info for accurate token ranges (optional)
 
     Returns:
         Tuple of:
@@ -393,7 +395,7 @@ def sample_next_token_track_aware(
     """
     # Apply track-specific constraints first
     if apply_constraints:
-        logits = apply_track_constraints(logits, track_type)
+        logits = apply_track_constraints(logits, track_type, vocab_info=vocab_info)
 
     # Then apply standard sampling strategies
     return sample_next_token(

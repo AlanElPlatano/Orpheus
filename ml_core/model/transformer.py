@@ -114,23 +114,36 @@ class MultiHeadAttention(nn.Module):
         # Use PyTorch's optimized scaled_dot_product_attention if available (PyTorch 2.0+)
         # This uses FlashAttention when possible, which is much more memory efficient
         if self.use_flash_attention and hasattr(F, 'scaled_dot_product_attention'):
-            # Prepare attention mask for scaled_dot_product_attention
-            # It expects: [batch_size, num_heads, seq_len, seq_len] or broadcastable
+            # Build combined attention mask: causal + padding
+            # PyTorch's SDPA doesn't allow both attn_mask and is_causal=True,
+            # so we must combine them manually into a single mask.
             attn_mask = None
-            if attention_mask is not None:
-                # Convert padding mask to attention mask
-                # attention_mask is [batch_size, seq_len], we need [batch_size, 1, 1, seq_len]
-                attn_mask = attention_mask.unsqueeze(1).unsqueeze(2)
-                # Convert to float and set padding positions to -inf
-                attn_mask = attn_mask.float().masked_fill(attn_mask == 0, float('-inf'))
-                attn_mask = attn_mask.masked_fill(attn_mask == 1, 0.0)
 
-            # scaled_dot_product_attention handles causal masking internally
+            if causal_mask:
+                # Create causal mask: upper triangle = -inf
+                seq_len_q = q.size(2)
+                seq_len_k = k.size(2)
+                attn_mask = torch.triu(
+                    torch.full((seq_len_q, seq_len_k), float('-inf'), device=q.device, dtype=q.dtype),
+                    diagonal=1
+                )
+
+            if attention_mask is not None:
+                # Convert padding mask [batch_size, seq_len] to [batch_size, 1, 1, seq_len]
+                padding_mask = attention_mask.unsqueeze(1).unsqueeze(2)
+                padding_mask = padding_mask.float().masked_fill(padding_mask == 0, float('-inf'))
+                padding_mask = padding_mask.masked_fill(padding_mask == 1, 0.0)
+                if attn_mask is not None:
+                    # Combine: broadcast causal [seq, seq] + padding [batch, 1, 1, seq]
+                    attn_mask = attn_mask.unsqueeze(0).unsqueeze(0) + padding_mask
+                else:
+                    attn_mask = padding_mask
+
             attn_output = F.scaled_dot_product_attention(
                 q, k, v,
                 attn_mask=attn_mask,
                 dropout_p=self.dropout if self.training else 0.0,
-                is_causal=causal_mask and attention_mask is None  # Only use is_causal if no custom mask
+                is_causal=False  # Causal masking is handled in attn_mask above
             )
         else:
             # Fall back to manual attention computation

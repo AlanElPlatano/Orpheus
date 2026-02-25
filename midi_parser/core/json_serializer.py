@@ -25,6 +25,7 @@ from midi_parser.config.defaults import (
 from midi_parser.core.midi_loader import MidiMetadata, ValidationResult
 from midi_parser.core.track_analyzer import TrackInfo
 from midi_parser.core.tokenizer_manager import TokenizationResult
+from midi_parser.core.token_reorderer import reorder_bar_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -465,9 +466,17 @@ class JSONSerializer:
         global_tokens = []
         total_sequence_length = 0
 
-        # Extract global tokens from first result (all are the same)
+        # Extract global tokens and apply bar-level reordering
+        raw_vocabulary = None
         if tokenization_results and tokenization_results[0].success:
             global_tokens = tokenization_results[0].tokens
+            raw_vocabulary = tokenization_results[0].vocabulary
+
+            if raw_vocabulary:
+                global_tokens, raw_vocabulary = reorder_bar_tokens(
+                    global_tokens, raw_vocabulary
+                )
+
             total_sequence_length = len(global_tokens)
             logger.info(f"Using global token sequence: {total_sequence_length} tokens")
 
@@ -507,14 +516,17 @@ class JSONSerializer:
             "sequence_length": total_sequence_length
         }
         
-        # Add vocabulary if configured
-        if self.output_config.include_vocabulary and tokenization_results:
-            # Use vocabulary from first successful tokenization
-            for result in tokenization_results:
-                if result.vocabulary:
-                    json_data["vocabulary"] = result.vocabulary
-                    json_data["vocabulary_size"] = len(result.vocabulary)
-                    break
+        # Add vocabulary if configured (use reordered vocabulary if available)
+        if self.output_config.include_vocabulary:
+            if raw_vocabulary:
+                json_data["vocabulary"] = raw_vocabulary
+                json_data["vocabulary_size"] = len(raw_vocabulary)
+            elif tokenization_results:
+                for result in tokenization_results:
+                    if result.vocabulary:
+                        json_data["vocabulary"] = result.vocabulary
+                        json_data["vocabulary_size"] = len(result.vocabulary)
+                        break
         
         # Add processing metadata if available
         if processing_metadata:

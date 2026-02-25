@@ -34,6 +34,10 @@ class VocabularyInfo:
     mask_token_id: int = 3
     bar_token_id: int = 4
 
+    # Structural token IDs (assigned dynamically, None if not present)
+    chord_start_token_id: Optional[int] = None
+    melody_start_token_id: Optional[int] = None
+
     # Token categories for analysis
     pitch_tokens: Set[int] = None
     duration_tokens: Set[int] = None
@@ -52,6 +56,8 @@ class VocabularyInfo:
         """
         Categorize tokens by type for constraint enforcement.
         """
+        from .constants import CHORD_START_TOKEN_NAME, MELODY_START_TOKEN_NAME
+
         self.pitch_tokens = set()
         self.duration_tokens = set()
         self.position_tokens = set()
@@ -61,8 +67,6 @@ class VocabularyInfo:
         self.program_tokens = set()
 
         for token_str, token_id in self.token_to_id.items():
-            token_lower = token_str.lower()
-
             if token_str.startswith('Pitch_'):
                 self.pitch_tokens.add(token_id)
             elif token_str.startswith('Duration_'):
@@ -78,6 +82,9 @@ class VocabularyInfo:
             elif token_str.startswith('Program_'):
                 self.program_tokens.add(token_id)
 
+        self.chord_start_token_id = self.token_to_id.get(CHORD_START_TOKEN_NAME)
+        self.melody_start_token_id = self.token_to_id.get(MELODY_START_TOKEN_NAME)
+
         logger.info(f"Categorized tokens:")
         logger.info(f"  Pitch: {len(self.pitch_tokens)}")
         logger.info(f"  Duration: {len(self.duration_tokens)}")
@@ -86,6 +93,8 @@ class VocabularyInfo:
         logger.info(f"  Tempo: {len(self.tempo_tokens)}")
         logger.info(f"  Time Sig: {len(self.time_sig_tokens)}")
         logger.info(f"  Program: {len(self.program_tokens)}")
+        logger.info(f"  ChordStart: {self.chord_start_token_id}")
+        logger.info(f"  MelodyStart: {self.melody_start_token_id}")
 
     def get_token_name(self, token_id: int) -> str:
         """
@@ -124,14 +133,19 @@ class VocabularyInfo:
         return token_id in self.position_tokens
 
     def is_special_token(self, token_id: int) -> bool:
-        """Check if token is a special token (PAD, BOS, EOS, MASK, Bar)."""
-        return token_id in {
+        """Check if token is a special token (PAD, BOS, EOS, MASK, Bar, structural)."""
+        special = {
             self.pad_token_id,
             self.bos_token_id,
             self.eos_token_id,
             self.mask_token_id,
-            self.bar_token_id
+            self.bar_token_id,
         }
+        if self.chord_start_token_id is not None:
+            special.add(self.chord_start_token_id)
+        if self.melody_start_token_id is not None:
+            special.add(self.melody_start_token_id)
+        return token_id in special
 
     def to_dict(self) -> Dict:
         """
@@ -148,7 +162,9 @@ class VocabularyInfo:
             'bos_token_id': self.bos_token_id,
             'eos_token_id': self.eos_token_id,
             'mask_token_id': self.mask_token_id,
-            'bar_token_id': self.bar_token_id
+            'bar_token_id': self.bar_token_id,
+            'chord_start_token_id': self.chord_start_token_id,
+            'melody_start_token_id': self.melody_start_token_id,
         }
 
     @classmethod
@@ -165,12 +181,14 @@ class VocabularyInfo:
         return cls(
             vocab_size=data['vocab_size'],
             token_to_id=data['token_to_id'],
-            id_to_token={int(k): v for k, v in data['id_to_token'].items()},  # Convert str keys to int
+            id_to_token={int(k): v for k, v in data['id_to_token'].items()},
             pad_token_id=data['pad_token_id'],
             bos_token_id=data['bos_token_id'],
             eos_token_id=data['eos_token_id'],
             mask_token_id=data['mask_token_id'],
-            bar_token_id=data['bar_token_id']
+            bar_token_id=data['bar_token_id'],
+            chord_start_token_id=data.get('chord_start_token_id'),
+            melody_start_token_id=data.get('melody_start_token_id'),
         )
 
 

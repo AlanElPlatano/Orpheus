@@ -8,11 +8,10 @@ constraint and GenerationState from ml_core/model/constraints.py.
 
 import torch
 import torch.nn.functional as F
-from typing import Optional, List, Set, Dict
+from typing import Optional, List, Set, Dict, FrozenSet
 import logging
 
 from ..data.constants import (
-    TOKEN_RANGES,
     BOS_TOKEN_ID,
     EOS_TOKEN_ID,
     BAR_TOKEN_ID,
@@ -148,19 +147,25 @@ def update_generation_state(
     """
     Update generation state based on newly generated token.
 
-    Tracks active notes, position, and track context.
+    Tracks active notes, position, track context, and structural markers.
 
     Args:
         state: Current generation state
         token_id: Newly generated token ID
         vocab_info: Vocabulary information for token categorization
     """
+    # Track switching via structural markers
+    if token_id == vocab_info.chord_start_token_id:
+        state.current_track = 'chord'
+        return
+
+    if token_id == vocab_info.melody_start_token_id:
+        state.current_track = 'melody'
+        return
+
     # Update based on token type
     if vocab_info.is_pitch_token(token_id):
-        # Pitch token - register note on
         token_name = vocab_info.get_token_name(token_id)
-
-        # Extract MIDI pitch from token name (e.g., "Pitch_60" -> 60)
         try:
             midi_pitch = int(token_name.split('_')[1])
             state.note_on(midi_pitch, state.current_track or 'melody')
@@ -168,34 +173,224 @@ def update_generation_state(
             logger.warning(f"Could not parse pitch from token: {token_name}")
 
     elif vocab_info.is_duration_token(token_id):
-        # Duration token - notes end
-        # In REMI, duration comes after pitch, so active notes should end
+        # Duration comes after pitch in REMI, clear active notes
         if state.current_track == 'melody':
             state.active_melody_notes.clear()
         elif state.current_track == 'chord':
             state.active_chord_notes.clear()
 
     elif vocab_info.is_position_token(token_id):
-        # Position token advances time
-        # NOTE: Position tokens are RELATIVE to bar start (0-47), not absolute
         token_name = vocab_info.get_token_name(token_id)
         try:
             relative_position = int(token_name.split('_')[1])
-            # Convert to absolute position
             absolute_position = state.current_bar * 48 + relative_position
             state.current_position = absolute_position
         except (IndexError, ValueError):
             pass
 
     elif token_id == BAR_TOKEN_ID:
-        # Bar token - new measure
         state.current_bar += 1
-        state.current_position = state.current_bar * 48  # Start of new bar
+        state.current_position = state.current_bar * 48
 
 
 # ============================================================================
 # Constraint Application
 # ============================================================================
+
+def apply_grammar_constraint(
+    logits: torch.Tensor,
+    generated_tokens: List[int],
+    vocab_info: 'VocabularyInfo',
+    mask_value: float = float('-inf')
+) -> torch.Tensor:
+    """
+    Enforce REMI note event grammar: Pitch -> Velocity -> Duration.
+
+    After a Pitch token, only Velocity tokens are allowed.
+    After a Velocity token, only Duration tokens are allowed.
+    This prevents the model from generating broken note events.
+
+    Args:
+        logits: Model output logits, shape [batch_size, vocab_size]
+        generated_tokens: Previously generated token IDs
+        vocab_info: Vocabulary information
+        mask_value: Value to use for masked positions
+
+    Returns:
+        Grammar-constrained logits
+    """
+    if not generated_tokens:
+        return logits
+
+    last_token = generated_tokens[-1]
+
+    # After a Pitch token, only Velocity tokens are allowed
+    if vocab_info.is_pitch_token(last_token):
+        constrained = torch.full_like(logits, mask_value)
+        for token_id in vocab_info.velocity_tokens:
+            constrained[:, token_id] = logits[:, token_id]
+        return constrained
+
+    # After a Velocity token, only Duration tokens are allowed
+    if last_token in vocab_info.velocity_tokens:
+        constrained = torch.full_like(logits, mask_value)
+        for token_id in vocab_info.duration_tokens:
+            constrained[:, token_id] = logits[:, token_id]
+        return constrained
+
+    return logits
+
+
+def _extract_completed_chord_pitch_sets(
+    generated_tokens: List[int],
+    vocab_info: 'VocabularyInfo'
+) -> List[FrozenSet[int]]:
+    """
+    Extract the set of pitch token IDs from each completed chord section.
+
+    A chord section spans from ChordStart to MelodyStart. Only completed
+    sections (with both markers) are returned.
+    """
+    chord_start_id = vocab_info.chord_start_token_id
+    melody_start_id = vocab_info.melody_start_token_id
+    chord_sections = []
+    current_chord_pitches = None
+
+    for token in generated_tokens:
+        if token == chord_start_id:
+            current_chord_pitches = set()
+        elif token == melody_start_id:
+            if current_chord_pitches is not None:
+                chord_sections.append(frozenset(current_chord_pitches))
+            current_chord_pitches = None
+        elif current_chord_pitches is not None and vocab_info.is_pitch_token(token):
+            current_chord_pitches.add(token)
+
+    return chord_sections
+
+
+def apply_chord_repetition_limit(
+    logits: torch.Tensor,
+    generated_tokens: List[int],
+    state: 'GenerationState',
+    vocab_info: 'VocabularyInfo',
+    max_consecutive_same_chord: int = 4,
+    mask_value: float = float('-inf')
+) -> torch.Tensor:
+    """
+    Prevent the same chord from repeating more than N consecutive bars.
+
+    After max_consecutive_same_chord bars with identical chord pitch sets,
+    mask those pitch tokens in the next chord section to force a change.
+
+    Args:
+        logits: Model output logits
+        generated_tokens: Previously generated token IDs
+        state: Current generation state
+        vocab_info: Vocabulary information
+        max_consecutive_same_chord: Maximum allowed consecutive identical chords
+        mask_value: Value to use for masked positions
+    """
+    if state.current_track != 'chord':
+        return logits
+
+    completed_chords = _extract_completed_chord_pitch_sets(generated_tokens, vocab_info)
+    if len(completed_chords) < max_consecutive_same_chord:
+        return logits
+
+    recent = completed_chords[-max_consecutive_same_chord:]
+    all_same = len(set(recent)) == 1 and len(recent[0]) > 0
+
+    if not all_same:
+        return logits
+
+    repeated_pitches = recent[0]
+    constrained = logits.clone()
+    for pitch_id in repeated_pitches:
+        constrained[:, pitch_id] = mask_value
+    return constrained
+
+
+def apply_consecutive_repetition_constraint(
+    logits: torch.Tensor,
+    generated_tokens: List[int],
+    max_consecutive: int = 3,
+    max_cycle_length: int = 8,
+    min_cycle_repetitions: int = 3,
+    mask_value: float = float('-inf')
+) -> torch.Tensor:
+    """
+    Hard constraint: prevent both single-token loops and short repeating cycles.
+
+    Detects two types of degenerate patterns:
+    1. Single token repeated N+ times: AAAA... -> mask A
+    2. Short cycle repeated M+ times: ABCDABCDABCD... -> mask next token in cycle
+
+    Special tokens (BOS, EOS, PAD, BAR) are exempt since they may legitimately repeat.
+
+    Args:
+        logits: Model output logits, shape [batch_size, vocab_size]
+        generated_tokens: List of previously generated token IDs
+        max_consecutive: Max allowed consecutive repeats of same token (default: 3)
+        max_cycle_length: Max cycle length to check for (default: 8)
+        min_cycle_repetitions: Min repetitions to trigger cycle detection (default: 3)
+        mask_value: Value to use for masked positions
+
+    Returns:
+        Logits with degenerate pattern tokens masked
+    """
+    if len(generated_tokens) < max_consecutive:
+        return logits
+
+    exempt_tokens = {BOS_TOKEN_ID, EOS_TOKEN_ID, PAD_TOKEN_ID, BAR_TOKEN_ID}
+    cloned = False
+
+    # 1) Check single-token repetition (AAAA...)
+    recent = generated_tokens[-max_consecutive:]
+    if len(set(recent)) == 1:
+        repeated_token = recent[0]
+        if repeated_token not in exempt_tokens:
+            if not cloned:
+                logits = logits.clone()
+                cloned = True
+            logits[:, repeated_token] = mask_value
+            logger.debug(
+                f"Blocked token {repeated_token} after {max_consecutive} consecutive repetitions"
+            )
+            return logits
+
+    # 2) Check short cycle repetition (ABCDABCDABCD...)
+    for cycle_len in range(2, max_cycle_length + 1):
+        needed = cycle_len * min_cycle_repetitions
+        if len(generated_tokens) < needed:
+            continue
+
+        tail = generated_tokens[-needed:]
+        pattern = tail[:cycle_len]
+
+        # Verify the pattern repeats exactly min_cycle_repetitions times
+        is_cycle = True
+        for i in range(cycle_len, needed):
+            if tail[i] != pattern[i % cycle_len]:
+                is_cycle = False
+                break
+
+        if is_cycle:
+            # The next token the model would generate to continue the cycle
+            next_in_cycle = pattern[0]
+            if next_in_cycle not in exempt_tokens:
+                if not cloned:
+                    logits = logits.clone()
+                    cloned = True
+                logits[:, next_in_cycle] = mask_value
+                logger.debug(
+                    f"Blocked repeating cycle of length {cycle_len} "
+                    f"(pattern: {pattern}), masked token {next_in_cycle}"
+                )
+            break  # Handle shortest detected cycle only
+
+    return logits
+
 
 def apply_diatonic_boost_enhanced(
     logits: torch.Tensor,
@@ -295,12 +490,14 @@ def apply_all_constraints(
     vocab_info: 'VocabularyInfo',
     pitch_token_to_midi: Optional[Dict[int, int]] = None,
     key: Optional[str] = None,
-    diatonic_boost_weight: float = 2.0
+    diatonic_boost_weight: float = 2.0,
+    generated_tokens: Optional[List[int]] = None,
+    max_consecutive_repetitions: int = 5
 ) -> torch.Tensor:
     """
     Apply all musical constraints to logits.
 
-    Combines monophony, chord sustain, and diatonic boosting.
+    Combines monophony, chord sustain, diatonic boosting, and repetition prevention.
 
     Args:
         logits: Model output logits
@@ -309,21 +506,37 @@ def apply_all_constraints(
         pitch_token_to_midi: Mapping for diatonic boosting (optional)
         key: Key signature for diatonic boosting (optional)
         diatonic_boost_weight: Boost weight for diatonic pitches
+        generated_tokens: Previously generated tokens for repetition constraint
+        max_consecutive_repetitions: Max allowed consecutive repeats of same token
 
     Returns:
         Constrained logits
     """
     from ..model.constraints import apply_monophony_constraint
 
-    logits = apply_monophony_constraint(logits, state)
+    # Apply REMI grammar constraint (Pitch -> Velocity -> Duration)
+    if generated_tokens is not None:
+        logits = apply_grammar_constraint(logits, generated_tokens, vocab_info)
+
+    logits = apply_monophony_constraint(logits, state, vocab_info=vocab_info)
 
     # Apply chord sustain constraint (enhanced version)
     logits = apply_chord_sustain_constraint_enhanced(logits, state, vocab_info)
 
-    # Apply diatonic boost (enhanced version)
-    if pitch_token_to_midi is not None and key is not None:
-        logits = apply_diatonic_boost_enhanced(
-            logits, key, pitch_token_to_midi, diatonic_boost_weight
+    # Prevent the same chord from repeating more than 4 consecutive bars
+    if generated_tokens is not None:
+        logits = apply_chord_repetition_limit(logits, generated_tokens, state, vocab_info)
+
+    # Diatonic boost DISABLED: it distorts the logit distribution at every step,
+    # inflating pitch token probabilities even when structural tokens (BAR, TimeSig,
+    # Tempo, etc.) should dominate. The model already learned diatonic preferences
+    # from training data. The boost caused the model to skip the BAR preamble
+    # entirely and generate pitch-dominated sequences.
+
+    # Apply consecutive repetition constraint (prevents infinite loops)
+    if generated_tokens is not None:
+        logits = apply_consecutive_repetition_constraint(
+            logits, generated_tokens, max_consecutive=max_consecutive_repetitions
         )
 
     return logits
@@ -411,6 +624,9 @@ __all__ = [
     'get_diatonic_pitches',
     'get_diatonic_token_ids',
     'update_generation_state',
+    'apply_grammar_constraint',
+    'apply_chord_repetition_limit',
+    'apply_consecutive_repetition_constraint',
     'apply_diatonic_boost_enhanced',
     'apply_chord_sustain_constraint_enhanced',
     'apply_all_constraints',
