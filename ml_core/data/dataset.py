@@ -108,6 +108,17 @@ class MusicTokenDataset(Dataset):
         chord_start_id = vocabulary.get(CHORD_START_TOKEN_NAME)
         melody_start_id = vocabulary.get(MELODY_START_TOKEN_NAME)
 
+        if chord_start_id is None or melody_start_id is None:
+            missing_tokens = []
+            if chord_start_id is None:
+                missing_tokens.append(CHORD_START_TOKEN_NAME)
+            if melody_start_id is None:
+                missing_tokens.append(MELODY_START_TOKEN_NAME)
+            raise ValueError(
+                "Vocabulary is missing required start token(s): "
+                + ", ".join(missing_tokens)
+            )
+
         current_track_type = TRACK_TYPE_MELODY
         track_ids = []
 

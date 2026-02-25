@@ -313,6 +313,11 @@ class TwoStageGenerator:
 
                 if should_stop:
                     logger.info(f"Chord generation stopped: {reason}")
+                    if melody_start_id not in generated_tokens:
+                        raise RuntimeError(
+                            f"Chord generation stopped ({reason}) before producing MelodyStart. "
+                            f"Consider increasing max_length or max_generation_bars."
+                        )
                     break
 
                 # Generate track IDs for current sequence
