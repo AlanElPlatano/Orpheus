@@ -8,7 +8,7 @@ constraint and GenerationState from ml_core/model/constraints.py.
 
 import torch
 import torch.nn.functional as F
-from typing import Optional, List, Set, Dict
+from typing import Optional, List, Set, Dict, FrozenSet
 import logging
 
 from ..data.constants import (
@@ -241,6 +241,76 @@ def apply_grammar_constraint(
     return logits
 
 
+def _extract_completed_chord_pitch_sets(
+    generated_tokens: List[int],
+    vocab_info: 'VocabularyInfo'
+) -> List[FrozenSet[int]]:
+    """
+    Extract the set of pitch token IDs from each completed chord section.
+
+    A chord section spans from ChordStart to MelodyStart. Only completed
+    sections (with both markers) are returned.
+    """
+    chord_start_id = vocab_info.chord_start_token_id
+    melody_start_id = vocab_info.melody_start_token_id
+    chord_sections = []
+    current_chord_pitches = None
+
+    for token in generated_tokens:
+        if token == chord_start_id:
+            current_chord_pitches = set()
+        elif token == melody_start_id:
+            if current_chord_pitches is not None:
+                chord_sections.append(frozenset(current_chord_pitches))
+            current_chord_pitches = None
+        elif current_chord_pitches is not None and vocab_info.is_pitch_token(token):
+            current_chord_pitches.add(token)
+
+    return chord_sections
+
+
+def apply_chord_repetition_limit(
+    logits: torch.Tensor,
+    generated_tokens: List[int],
+    state: 'GenerationState',
+    vocab_info: 'VocabularyInfo',
+    max_consecutive_same_chord: int = 4,
+    mask_value: float = float('-inf')
+) -> torch.Tensor:
+    """
+    Prevent the same chord from repeating more than N consecutive bars.
+
+    After max_consecutive_same_chord bars with identical chord pitch sets,
+    mask those pitch tokens in the next chord section to force a change.
+
+    Args:
+        logits: Model output logits
+        generated_tokens: Previously generated token IDs
+        state: Current generation state
+        vocab_info: Vocabulary information
+        max_consecutive_same_chord: Maximum allowed consecutive identical chords
+        mask_value: Value to use for masked positions
+    """
+    if state.current_track != 'chord':
+        return logits
+
+    completed_chords = _extract_completed_chord_pitch_sets(generated_tokens, vocab_info)
+    if len(completed_chords) < max_consecutive_same_chord:
+        return logits
+
+    recent = completed_chords[-max_consecutive_same_chord:]
+    all_same = len(set(recent)) == 1 and len(recent[0]) > 0
+
+    if not all_same:
+        return logits
+
+    repeated_pitches = recent[0]
+    constrained = logits.clone()
+    for pitch_id in repeated_pitches:
+        constrained[:, pitch_id] = mask_value
+    return constrained
+
+
 def apply_consecutive_repetition_constraint(
     logits: torch.Tensor,
     generated_tokens: List[int],
@@ -453,6 +523,10 @@ def apply_all_constraints(
     # Apply chord sustain constraint (enhanced version)
     logits = apply_chord_sustain_constraint_enhanced(logits, state, vocab_info)
 
+    # Prevent the same chord from repeating more than 4 consecutive bars
+    if generated_tokens is not None:
+        logits = apply_chord_repetition_limit(logits, generated_tokens, state, vocab_info)
+
     # Diatonic boost DISABLED: it distorts the logit distribution at every step,
     # inflating pitch token probabilities even when structural tokens (BAR, TimeSig,
     # Tempo, etc.) should dominate. The model already learned diatonic preferences
@@ -551,6 +625,7 @@ __all__ = [
     'get_diatonic_token_ids',
     'update_generation_state',
     'apply_grammar_constraint',
+    'apply_chord_repetition_limit',
     'apply_consecutive_repetition_constraint',
     'apply_diatonic_boost_enhanced',
     'apply_chord_sustain_constraint_enhanced',
