@@ -453,11 +453,11 @@ def apply_all_constraints(
     # Apply chord sustain constraint (enhanced version)
     logits = apply_chord_sustain_constraint_enhanced(logits, state, vocab_info)
 
-    # Apply diatonic boost (enhanced version)
-    if pitch_token_to_midi is not None and key is not None:
-        logits = apply_diatonic_boost_enhanced(
-            logits, key, pitch_token_to_midi, diatonic_boost_weight
-        )
+    # Diatonic boost DISABLED: it distorts the logit distribution at every step,
+    # inflating pitch token probabilities even when structural tokens (BAR, TimeSig,
+    # Tempo, etc.) should dominate. The model already learned diatonic preferences
+    # from training data. The boost caused the model to skip the BAR preamble
+    # entirely and generate pitch-dominated sequences.
 
     # Apply consecutive repetition constraint (prevents infinite loops)
     if generated_tokens is not None:
