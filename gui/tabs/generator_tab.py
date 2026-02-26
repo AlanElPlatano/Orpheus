@@ -123,6 +123,7 @@ def start_generation(
     max_bars: int,
     output_dir: str,
     key_signature: str,
+    auto_tempo: bool,
     tempo: float,
     time_signature: str,
     apply_chord_sustain: bool,
@@ -155,7 +156,7 @@ def start_generation(
 
         # Apply conditioning if not set to "Auto"
         config.key = None if key_signature == "Auto" else key_signature
-        config.tempo = None if key_signature == "Auto" else tempo  # tempo also respects "Auto" key
+        config.tempo = None if auto_tempo else tempo
         config.time_signature = None if time_signature == "Auto" else parse_time_signature(time_signature)
 
         # Update generator config
@@ -363,8 +364,14 @@ def create_generator_tab() -> gr.Tab:
                         maximum=140,
                         value=125,
                         step=1,
-                        interactive=True,
+                        interactive=False,  # Start disabled since auto is default
                         info="Target tempo for generation"
+                    )
+
+                    auto_tempo_checkbox = gr.Checkbox(
+                        label="Auto (let model decide tempo)",
+                        value=True,
+                        interactive=True
                     )
 
                     time_sig_dropdown = gr.Dropdown(
@@ -504,6 +511,13 @@ def create_generator_tab() -> gr.Tab:
             ]
         )
 
+        # Auto tempo checkbox toggles tempo slider
+        auto_tempo_checkbox.change(
+            fn=lambda auto: gr.update(interactive=not auto),
+            inputs=[auto_tempo_checkbox],
+            outputs=[tempo_slider]
+        )
+
         # Generate button
         generate_btn.click(
             fn=start_generation,
@@ -516,6 +530,7 @@ def create_generator_tab() -> gr.Tab:
                 max_bars_slider,
                 output_dir_textbox,
                 key_dropdown,
+                auto_tempo_checkbox,
                 tempo_slider,
                 time_sig_dropdown,
                 chord_sustain_checkbox
