@@ -492,7 +492,7 @@ class MusicTransformer(nn.Module):
         Generate tokens autoregressively.
 
         This is a simple generation method. For full generation with constraints,
-        use the generation/ module (Phase 4).
+        use the generation/ module.
 
         Args:
             input_ids: Initial token IDs, shape [batch_size, seq_len]

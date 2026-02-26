@@ -1119,7 +1119,7 @@ def create_training_tab() -> gr.Tab:
                     with gr.Accordion("Loss Settings", open=False):
                         loss_type_dropdown = gr.Dropdown(
                             label="Loss Type",
-                            choices=["weighted", "constraint_aware", "track_aware"],
+                            choices=["weighted", "track_aware"],
                             value="weighted",
                             info="Type of loss function"
                         )
