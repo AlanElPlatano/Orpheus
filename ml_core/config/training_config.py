@@ -60,6 +60,9 @@ class TrainingConfig:
     use_conditioning: bool = False  # Use conditional generation embeddings (key, tempo, time sig)
     conditioning_dropout: float = 0.2  # Probability of dropping conditions during training (for optional conditioning)
 
+    # Scale degree embeddings (Phase 2)
+    use_scale_degree_embeddings: bool = False  # Use scale degree embeddings for functional harmony awareness
+
     # Memory optimization settings
     use_gradient_checkpointing: bool = False  # Use gradient checkpointing (trades compute for memory, 40-60% activation memory saved)
     use_flash_attention: bool = True  # Use PyTorch's scaled_dot_product_attention (FlashAttention when available, 20-30% memory saved)

@@ -187,6 +187,59 @@ MINOR_SCALE_INTERVALS = [0, 2, 3, 5, 7, 8, 10]  # Natural minor
 
 
 # ============================================================================
+# Scale Degree Constants (Phase 2: Scale Degree Embeddings)
+# ============================================================================
+
+# Number of scale degree embedding IDs:
+#   0-11: chromatic scale degrees relative to key root
+#   12:   non-pitch token (for tokens that don't represent a pitch)
+#   13:   unknown key (for songs without key signature metadata)
+NUM_SCALE_DEGREE_IDS = 14
+SCALE_DEGREE_NON_PITCH = 12
+SCALE_DEGREE_UNKNOWN_KEY = 13
+
+# Human-readable names for scale degrees
+SCALE_DEGREE_NAMES: Dict[int, str] = {
+    0: 'Tonic (1)',
+    1: 'Flat 2nd (b2)',
+    2: 'Major 2nd (2)',
+    3: 'Minor 3rd (b3)',
+    4: 'Major 3rd (3)',
+    5: 'Perfect 4th (4)',
+    6: 'Tritone (b5)',
+    7: 'Perfect 5th (5)',
+    8: 'Minor 6th (b6)',
+    9: 'Major 6th (6)',
+    10: 'Minor 7th (b7)',
+    11: 'Major 7th (7)',
+    12: 'Non-pitch (N/A)',
+    13: 'Unknown key',
+}
+
+# Key name to root pitch class (0-11, where C=0, C#/Db=1, ..., B=11)
+# Covers all key names from ALL_KEYS plus common enharmonic variants
+KEY_NAME_TO_PITCH_CLASS: Dict[str, int] = {
+    'C': 0, 'Cm': 0,
+    'C#': 1, 'C#m': 1, 'Db': 1, 'Dbm': 1,
+    'D': 2, 'Dm': 2,
+    'D#': 3, 'D#m': 3, 'Eb': 3, 'Ebm': 3,
+    'E': 4, 'Em': 4,
+    'F': 5, 'Fm': 5,
+    'F#': 6, 'F#m': 6, 'Gb': 6, 'Gbm': 6,
+    'G': 7, 'Gm': 7,
+    'G#': 8, 'G#m': 8, 'Ab': 8, 'Abm': 8,
+    'A': 9, 'Am': 9,
+    'A#': 10, 'A#m': 10, 'Bb': 10, 'Bbm': 10,
+    'B': 11, 'Bm': 11,
+}
+
+# Pitch token to MIDI pitch mapping constants
+# Pitch_21 starts at token ID 5 (from TOKEN_RANGES)
+PITCH_TOKEN_ID_START = 5
+PITCH_MIDI_START = 21
+
+
+# ============================================================================
 # Time Signature Definitions
 # ============================================================================
 
@@ -453,6 +506,39 @@ def get_track_type_from_program(program_id: int) -> int:
         return TRACK_TYPE_MELODY if program_id >= 80 else TRACK_TYPE_CHORD
 
 
+def get_midi_pitch_from_token(token_id: int) -> int:
+    """
+    Get the MIDI pitch value from a pitch token ID.
+
+    Args:
+        token_id: A pitch token ID (must be within TOKEN_RANGES['pitch'])
+
+    Returns:
+        MIDI pitch value (e.g., 60 for middle C)
+    """
+    return token_id - PITCH_TOKEN_ID_START + PITCH_MIDI_START
+
+
+def compute_scale_degree(token_id: int, key_root_pitch_class: int) -> int:
+    """
+    Compute the scale degree ID for a token given the key root pitch class.
+
+    For pitch tokens, returns the chromatic interval (0-11) from the key root.
+    For non-pitch tokens, returns SCALE_DEGREE_NON_PITCH (12).
+
+    Args:
+        token_id: Token ID
+        key_root_pitch_class: Root pitch class of the key (0-11, where C=0)
+
+    Returns:
+        Scale degree ID (0-11 for pitch tokens, 12 for non-pitch tokens)
+    """
+    if is_pitch_token(token_id):
+        midi_pitch = get_midi_pitch_from_token(token_id)
+        return (midi_pitch - key_root_pitch_class) % 12
+    return SCALE_DEGREE_NON_PITCH
+
+
 __all__ = [
     # Special tokens
     'SpecialTokens',
@@ -543,6 +629,15 @@ __all__ = [
     'TEMPO_NONE_VALUE',
     'CONDITION_EMBED_DIM',
 
+    # Scale degree constants
+    'NUM_SCALE_DEGREE_IDS',
+    'SCALE_DEGREE_NON_PITCH',
+    'SCALE_DEGREE_UNKNOWN_KEY',
+    'SCALE_DEGREE_NAMES',
+    'KEY_NAME_TO_PITCH_CLASS',
+    'PITCH_TOKEN_ID_START',
+    'PITCH_MIDI_START',
+
     # Utility functions
     'get_token_type',
     'is_special_token',
@@ -552,4 +647,6 @@ __all__ = [
     'is_position_token',
     'is_metadata_token',
     'get_track_type_from_program',
+    'get_midi_pitch_from_token',
+    'compute_scale_degree',
 ]
