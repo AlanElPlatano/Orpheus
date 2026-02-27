@@ -1,14 +1,14 @@
 """
 Loss functions for music generation training.
 
-Implements weighted cross-entropy loss with support for constraint-based
-loss weighting to encourage the model to follow musical rules.
+Implements weighted cross-entropy loss with track-aware weighting
+to penalize constraint violations during training.
 """
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Optional, Dict
+from typing import Optional
 from ..data.constants import (
     PAD_TOKEN_ID,
     TRACK_TYPE_MELODY,
@@ -98,107 +98,6 @@ class WeightedMusicLoss(nn.Module):
 
         return loss
 
-
-class ConstraintAwareLoss(nn.Module):
-    """
-    Loss function with constraint-aware weighting.
-
-    Applies different loss weights based on musical constraints:
-    - Higher weight for constraint violations
-    - Normal weight for regular tokens
-
-    NOTE: This is a basic implementation. Full constraint detection will
-    be added when we have more training experience.
-    """
-
-    def __init__(
-        self,
-        base_loss_fn: Optional[nn.Module] = None,
-        constraint_weights: Optional[Dict[str, float]] = None,
-        ignore_index: int = -100
-    ):
-        """
-        Initialize constraint-aware loss.
-
-        Args:
-            base_loss_fn: Base loss function (default: WeightedMusicLoss)
-            constraint_weights: Dictionary of constraint weights
-            ignore_index: Token ID to ignore in loss calculation
-        """
-        super().__init__()
-
-        self.base_loss_fn = base_loss_fn or WeightedMusicLoss(ignore_index=ignore_index)
-        self.ignore_index = ignore_index
-
-        # Default constraint weights
-        self.constraint_weights = constraint_weights or {
-            'monophony_violation': 10.0,
-            'chord_duration_violation': 5.0,
-            'diatonic_violation': 3.0,
-            'normal_token': 1.0
-        }
-
-    def detect_constraint_violations(
-        self,
-        predictions: torch.Tensor,
-        targets: torch.Tensor
-    ) -> torch.Tensor:
-        """
-        Detect constraint violations in the predictions.
-
-        This is a placeholder for Phase 3. We'll implement proper constraint
-        detection when we have training data and understand violation patterns.
-
-        Args:
-            predictions: Predicted token IDs
-            targets: Target token IDs
-
-        Returns:
-            Weight tensor, shape [batch_size, seq_len]
-        """
-        # For now, return uniform weights
-        # In Phase 3, we'll add logic to detect:
-        # - Monophony violations (multiple simultaneous melody notes)
-        # - Chord duration violations (short chord durations)
-        # - Diatonic violations (notes outside the key)
-
-        return torch.ones_like(targets, dtype=torch.float)
-
-    def forward(
-        self,
-        logits: torch.Tensor,
-        targets: torch.Tensor,
-        sample_weights: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        """
-        Compute constraint-aware loss.
-
-        Args:
-            logits: Model output logits
-            targets: Target token IDs
-            sample_weights: Per-sample weights (optional)
-
-        Returns:
-            Scalar loss value
-        """
-        # Get predictions (for constraint detection)
-        predictions = logits.argmax(dim=-1)
-
-        # Detect constraint violations (future implementation)
-        constraint_weights = self.detect_constraint_violations(predictions, targets)
-
-        # Combine with sample weights if provided
-        if sample_weights is not None:
-            # Broadcast sample_weights to match constraint_weights shape
-            sample_weights = sample_weights.unsqueeze(1)
-            combined_weights = constraint_weights * sample_weights
-        else:
-            combined_weights = constraint_weights
-
-        # For now, just use the base loss without constraint weighting
-        # We'll add proper constraint-based weighting in Phase 3 after
-        # observing actual training behavior
-        return self.base_loss_fn(logits, targets, sample_weights)
 
 
 class TrackAwareLoss(nn.Module):
@@ -369,7 +268,6 @@ def create_loss_function(
     loss_type: str = 'weighted',
     ignore_index: int = -100,
     label_smoothing: float = 0.0,
-    constraint_weights: Optional[Dict[str, float]] = None,
     melody_violation_weight: float = 10.0,
     chord_violation_weight: float = 5.0
 ) -> nn.Module:
@@ -377,10 +275,9 @@ def create_loss_function(
     Factory function to create a loss function.
 
     Args:
-        loss_type: Type of loss ('weighted', 'constraint_aware', or 'track_aware')
+        loss_type: Type of loss ('weighted' or 'track_aware')
         ignore_index: Token ID to ignore in loss calculation
         label_smoothing: Label smoothing factor
-        constraint_weights: Dictionary of constraint weights
         melody_violation_weight: Weight for melody constraint violations
         chord_violation_weight: Weight for chord constraint violations
 
@@ -393,26 +290,14 @@ def create_loss_function(
             chord_violation_weight=chord_violation_weight,
             ignore_index=ignore_index
         )
-    elif loss_type == 'constraint_aware':
-        base_loss = WeightedMusicLoss(
-            ignore_index=ignore_index,
-            label_smoothing=label_smoothing
-        )
-        return ConstraintAwareLoss(
-            base_loss_fn=base_loss,
-            constraint_weights=constraint_weights,
-            ignore_index=ignore_index
-        )
-    else:  # 'weighted' or default
-        return WeightedMusicLoss(
-            ignore_index=ignore_index,
-            label_smoothing=label_smoothing
-        )
+    return WeightedMusicLoss(
+        ignore_index=ignore_index,
+        label_smoothing=label_smoothing
+    )
 
 
 __all__ = [
     'WeightedMusicLoss',
-    'ConstraintAwareLoss',
     'TrackAwareLoss',
     'compute_perplexity',
     'create_loss_function'

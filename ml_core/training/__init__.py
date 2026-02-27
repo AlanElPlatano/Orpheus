@@ -4,7 +4,6 @@ Training infrastructure and utilities.
 
 from .loss import (
     WeightedMusicLoss,
-    ConstraintAwareLoss,
     compute_perplexity,
     create_loss_function
 )
@@ -29,7 +28,6 @@ from .gradio_trainer import GradioTrainer, TrainingMetrics
 __all__ = [
     # Loss functions
     'WeightedMusicLoss',
-    'ConstraintAwareLoss',
     'compute_perplexity',
     'create_loss_function',
 

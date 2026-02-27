@@ -92,7 +92,7 @@ class TrainingConfig:
     # ========================================================================
     # Loss settings
     # ========================================================================
-    loss_type: str = "weighted"  # "weighted", "constraint_aware", or "track_aware"
+    loss_type: str = "weighted"  # "weighted" or "track_aware"
     label_smoothing: float = 0.0  # Label smoothing factor (0.0 = no smoothing)
     ignore_index: int = -100  # Padding token index to ignore in loss
 
