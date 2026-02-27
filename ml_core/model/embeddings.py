@@ -26,7 +26,8 @@ from ..data.constants import (
     CONDITION_EMBED_DIM,
     TEMPO_NONE_VALUE,
     MIN_TEMPO_CONDITION,
-    MAX_TEMPO_CONDITION
+    MAX_TEMPO_CONDITION,
+    NUM_SCALE_DEGREE_IDS
 )
 
 
@@ -196,6 +197,57 @@ class TrackEmbedding(nn.Module):
         return self.embedding(track_ids)
 
 
+class ScaleDegreeEmbedding(nn.Module):
+    """
+    Scale degree embedding that encodes each token's chromatic scale degree
+    relative to the song's key signature.
+
+    This gives the model functional harmony awareness independent of absolute pitch.
+    For example, the model learns that "E over C major" and "F# over D major" are
+    both the major 3rd (scale degree 4 relative to the root in semitones), regardless of the absolute pitch.
+
+    IDs:
+        0-11: Chromatic scale degrees (tonic through major 7th)
+        12:   Non-pitch token (for tokens that don't represent a pitch)
+        13:   Unknown key (for songs without key signature metadata)
+    """
+
+    def __init__(
+        self,
+        num_scale_degrees: int = NUM_SCALE_DEGREE_IDS,
+        hidden_dim: int = HIDDEN_DIM
+    ):
+        """
+        Initialize scale degree embeddings.
+
+        Args:
+            num_scale_degrees: Number of scale degree IDs (default: 14)
+            hidden_dim: Dimension of embedding vectors (default: 512)
+        """
+        super().__init__()
+        self.num_scale_degrees = num_scale_degrees
+        self.hidden_dim = hidden_dim
+
+        # Learnable embedding matrix: [num_scale_degrees, hidden_dim]
+        self.embedding = nn.Embedding(num_scale_degrees, hidden_dim)
+
+        # Initialize embeddings
+        nn.init.xavier_uniform_(self.embedding.weight)
+
+    def forward(self, scale_degree_ids: torch.Tensor) -> torch.Tensor:
+        """
+        Convert scale degree IDs to embeddings.
+
+        Args:
+            scale_degree_ids: Scale degree IDs, shape [batch_size, seq_len]
+                             Each element is 0-11 (scale degree), 12 (non-pitch), or 13 (unknown key)
+
+        Returns:
+            Embeddings, shape [batch_size, seq_len, hidden_dim]
+        """
+        return self.embedding(scale_degree_ids)
+
+
 class ConditionEmbedding(nn.Module):
     """
     Conditional generation embedding layer that encodes key, tempo, and time signature.
@@ -328,7 +380,8 @@ class MusicEmbedding(nn.Module):
         dropout: float = DROPOUT,
         use_track_embeddings: bool = True,
         num_track_types: int = NUM_TRACK_TYPES,
-        use_conditioning: bool = False
+        use_conditioning: bool = False,
+        use_scale_degree_embeddings: bool = False
     ):
         """
         Initialize music embedding.
@@ -341,6 +394,7 @@ class MusicEmbedding(nn.Module):
             use_track_embeddings: Whether to include track type embeddings (default: True)
             num_track_types: Number of track types (default: 2)
             use_conditioning: Whether to include conditional generation embeddings (default: False)
+            use_scale_degree_embeddings: Whether to include scale degree embeddings (default: False)
         """
         super().__init__()
 
@@ -349,6 +403,7 @@ class MusicEmbedding(nn.Module):
         self.max_len = max_len
         self.use_track_embeddings = use_track_embeddings
         self.use_conditioning = use_conditioning
+        self.use_scale_degree_embeddings = use_scale_degree_embeddings
 
         # Token embeddings
         self.token_embedding = TokenEmbedding(vocab_size, hidden_dim)
@@ -361,6 +416,12 @@ class MusicEmbedding(nn.Module):
             self.track_embedding = TrackEmbedding(num_track_types, hidden_dim)
         else:
             self.track_embedding = None
+
+        # Scale degree embeddings (optional)
+        if use_scale_degree_embeddings:
+            self.scale_degree_embedding = ScaleDegreeEmbedding(NUM_SCALE_DEGREE_IDS, hidden_dim)
+        else:
+            self.scale_degree_embedding = None
 
         # Conditional generation embeddings (optional)
         if use_conditioning:
@@ -376,17 +437,20 @@ class MusicEmbedding(nn.Module):
         self,
         token_ids: torch.Tensor,
         track_ids: Optional[torch.Tensor] = None,
+        scale_degree_ids: Optional[torch.Tensor] = None,
         key_ids: Optional[torch.Tensor] = None,
         tempo_values: Optional[torch.Tensor] = None,
         time_sig_ids: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         """
-        Convert token IDs to embeddings with positional, track, and conditioning information.
+        Convert token IDs to embeddings with positional, track, scale degree, and conditioning information.
 
         Args:
             token_ids: Token IDs, shape [batch_size, seq_len]
             track_ids: Track type IDs, shape [batch_size, seq_len] (optional)
                       Each element is 0 (MELODY) or 1 (CHORD)
+            scale_degree_ids: Scale degree IDs, shape [batch_size, seq_len] (optional)
+                             Each element is 0-11 (degree), 12 (non-pitch), or 13 (unknown key)
             key_ids: Key signature condition IDs, shape [batch_size] (optional)
                     0 = "none", 1-25 = specific keys
             tempo_values: Tempo condition values in BPM, shape [batch_size] (optional)
@@ -405,6 +469,11 @@ class MusicEmbedding(nn.Module):
             track_emb = self.track_embedding(track_ids)
             # Add track embeddings to token embeddings (similar to segment embeddings in BERT)
             token_emb = token_emb + track_emb
+
+        # Add scale degree embeddings if provided and enabled
+        if self.use_scale_degree_embeddings and scale_degree_ids is not None:
+            sd_emb = self.scale_degree_embedding(scale_degree_ids)
+            token_emb = token_emb + sd_emb
 
         # Add conditioning if provided and enabled
         if self.use_conditioning and key_ids is not None and tempo_values is not None and time_sig_ids is not None:
@@ -429,7 +498,8 @@ def get_embedding_layer(
     dropout: float = DROPOUT,
     use_track_embeddings: bool = True,
     num_track_types: int = NUM_TRACK_TYPES,
-    use_conditioning: bool = False
+    use_conditioning: bool = False,
+    use_scale_degree_embeddings: bool = False
 ) -> MusicEmbedding:
     """
     Factory function to create a music embedding layer.
@@ -442,6 +512,7 @@ def get_embedding_layer(
         use_track_embeddings: Whether to include track type embeddings
         num_track_types: Number of track types
         use_conditioning: Whether to include conditional generation embeddings
+        use_scale_degree_embeddings: Whether to include scale degree embeddings
 
     Returns:
         MusicEmbedding layer ready to use
@@ -453,7 +524,8 @@ def get_embedding_layer(
         dropout,
         use_track_embeddings,
         num_track_types,
-        use_conditioning
+        use_conditioning,
+        use_scale_degree_embeddings
     )
 
 
@@ -461,6 +533,7 @@ __all__ = [
     'TokenEmbedding',
     'PositionalEncoding',
     'TrackEmbedding',
+    'ScaleDegreeEmbedding',
     'ConditionEmbedding',
     'MusicEmbedding',
     'get_embedding_layer'
