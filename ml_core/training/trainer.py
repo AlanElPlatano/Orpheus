@@ -195,7 +195,8 @@ class Trainer:
             'dropout': self.config.dropout,
             'use_track_embeddings': self.config.use_track_embeddings,
             'num_track_types': self.config.num_track_types,
-            'use_scale_degree_embeddings': self.config.use_scale_degree_embeddings
+            'use_scale_degree_embeddings': self.config.use_scale_degree_embeddings,
+            'use_conditioning': self.config.use_conditioning
         }
 
     def _get_extra_state(self) -> Dict:
