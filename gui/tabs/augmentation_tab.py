@@ -13,6 +13,7 @@ from augmentation.transpose_tokenized_json import (
     batch_transpose_directory,
     SEMITONE_OFFSETS
 )
+from midi_parser.core.chord_enrichment import batch_enrich_directory
 
 
 def transpose_batch_files(
@@ -233,6 +234,65 @@ def get_directory_stats(input_dir: str) -> str:
     return stats
 
 
+def enrich_chords_batch(
+    input_dir: str,
+    overwrite: bool,
+    progress=gr.Progress()
+) -> Tuple[str, str]:
+    """
+    Run chord voicing analysis on all JSON files in a directory.
+
+    Adds bar_chords metadata to each file, identifying chord root and
+    quality per bar.
+
+    Args:
+        input_dir: Directory containing tokenized JSON files
+        overwrite: Re-analyze files that already have chord data
+        progress: Gradio progress tracker
+
+    Returns:
+        Tuple of (status, summary)
+    """
+    if not input_dir:
+        return "No input directory selected", ""
+
+    input_path = Path(input_dir)
+    if not input_path.exists() or not input_path.is_dir():
+        return "Invalid input directory", ""
+
+    json_files = list(input_path.glob("*.json"))
+    if not json_files:
+        return "No JSON files found in directory", ""
+
+    progress(0, desc="Starting chord analysis...")
+
+    def progress_callback(fraction, desc):
+        progress(fraction, desc=desc)
+
+    stats = batch_enrich_directory(
+        input_path,
+        overwrite=overwrite,
+        progress_callback=progress_callback,
+    )
+
+    summary = f"""
+## Chord Enrichment Complete
+
+**Total Files:** {stats['total']}
+**Enriched:** {stats['enriched']}
+**Skipped (already enriched):** {stats['skipped']}
+**Failed:** {stats['failed']}
+
+Each enriched file now contains `bar_chords` metadata with per-bar chord root
+and quality information. This data will be used by the Chord-Tone Embedding
+during training.
+"""
+
+    status = f"Chord enrichment complete: {stats['enriched']} files enriched"
+
+    return status, summary
+
+
 def create_augmentation_tab() -> gr.Tab:
     """
     Create the data augmentation tab with UI and event handlers.
@@ -319,7 +379,61 @@ def create_augmentation_tab() -> gr.Tab:
                 with gr.Accordion("Directory Statistics", open=True):
                     stats_display = gr.Markdown(get_directory_stats("./processed"))
 
+        # ================================================================
+        # Chord Enrichment Section
+        # ================================================================
+        gr.Markdown("---")
+        gr.Markdown("""
+        ## Chord Voicing Analysis
+
+        Analyzes chord notes in each bar to identify chord root and quality
+        (e.g., A major, D minor). This enrichment adds `bar_chords` metadata
+        to your JSON files, which is used during training for chord-tone
+        awareness.
+
+        **Note:** This works on files that have already been parsed with the
+        CHORD_START/MELODY_START structure. Run this after parsing and
+        transposition.
+        """)
+
+        with gr.Row():
+            with gr.Column(scale=1):
+                chord_input_dir = gr.Textbox(
+                    label="Input Directory",
+                    value="./processed",
+                    placeholder="Path to folder containing tokenized JSON files"
+                )
+
+                chord_overwrite = gr.Checkbox(
+                    label="Re-analyze files that already have chord data",
+                    value=False,
+                    info="If unchecked, files with existing bar_chords will be skipped"
+                )
+
+                chord_enrich_btn = gr.Button(
+                    "Analyze Chords",
+                    variant="primary",
+                    size="lg"
+                )
+
+            with gr.Column(scale=2):
+                chord_status = gr.Textbox(
+                    label="Status",
+                    interactive=False
+                )
+                chord_summary = gr.Markdown("*No chord analysis run yet*")
+
         # Event handlers
+        chord_enrich_btn.click(
+            fn=enrich_chords_batch,
+            inputs=[chord_input_dir, chord_overwrite],
+            outputs=[chord_status, chord_summary]
+        ).then(
+            fn=get_directory_stats,
+            inputs=[chord_input_dir],
+            outputs=[stats_display]
+        )
+
         transpose_btn.click(
             fn=transpose_batch_files,
             inputs=[input_dir_aug, output_dir_aug, mode_aug, overwrite_aug],

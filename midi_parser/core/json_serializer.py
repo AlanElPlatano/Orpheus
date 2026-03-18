@@ -26,6 +26,7 @@ from midi_parser.core.midi_loader import MidiMetadata, ValidationResult
 from midi_parser.core.track_analyzer import TrackInfo
 from midi_parser.core.tokenizer_manager import TokenizationResult
 from midi_parser.core.token_reorderer import reorder_bar_tokens
+from midi_parser.core.chord_analyzer import analyze_bar_chords
 
 logger = logging.getLogger(__name__)
 
@@ -480,6 +481,11 @@ class JSONSerializer:
             total_sequence_length = len(global_tokens)
             logger.info(f"Using global token sequence: {total_sequence_length} tokens")
 
+        # Analyze chord voicings per bar
+        bar_chords = []
+        if global_tokens and raw_vocabulary:
+            bar_chords = analyze_bar_chords(global_tokens, raw_vocabulary)
+
         for i, track_info in enumerate(track_infos):
             track_data = {
                 "index": track_info.index,
@@ -513,7 +519,8 @@ class JSONSerializer:
             "metadata": json_metadata,
             "tracks": tracks,
             "global_tokens": global_tokens,  # Store one sequence for entire midi
-            "sequence_length": total_sequence_length
+            "sequence_length": total_sequence_length,
+            "bar_chords": bar_chords  # Per-bar chord root + quality
         }
         
         # Add vocabulary if configured (use reordered vocabulary if available)

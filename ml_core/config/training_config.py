@@ -57,8 +57,11 @@ class TrainingConfig:
     num_track_types: int = 2  # Number of track types
 
     # Conditional generation settings
-    use_conditioning: bool = False  # Use conditional generation embeddings (key, tempo, time sig)
+    use_conditioning: bool = True  # Use conditional generation embeddings (key, tempo, time sig)
     conditioning_dropout: float = 0.2  # Probability of dropping conditions during training (for optional conditioning)
+
+    # Chord-tone awareness (requires enrichment on data)
+    use_chord_tone_embeddings: bool = False  # Use chord-tone relationship embeddings
 
     # Memory optimization settings
     use_gradient_checkpointing: bool = False  # Use gradient checkpointing (trades compute for memory, 40-60% activation memory saved)
@@ -113,7 +116,7 @@ class TrainingConfig:
     log_interval: int = LOG_INTERVAL
     log_dir: Path = Path("ml_core/logs")
     use_tensorboard: bool = True
-    use_wandb: bool = False  # Weights & Biases integration
+    use_wandb: bool = True  # Weights & Biases integration
     wandb_project: Optional[str] = "Orpheus"
     wandb_run_name: Optional[str] = None
 

@@ -9,7 +9,7 @@ instead of having them scattered randomly throughout 50 files
 """
 
 from enum import IntEnum
-from typing import Dict, List
+from typing import Dict, FrozenSet, List
 
 
 # ============================================================================
@@ -184,6 +184,44 @@ MINOR_KEYS = [
 # Diatonic scale degrees (for constraint enforcement)
 MAJOR_SCALE_INTERVALS = [0, 2, 4, 5, 7, 9, 11]  # Semitones from root
 MINOR_SCALE_INTERVALS = [0, 2, 3, 5, 7, 8, 10]  # Natural minor
+
+
+# ============================================================================
+# Chord Template Definitions (Chord Voicing Normalization)
+# ============================================================================
+
+# Each template maps chord quality name -> frozenset of intervals from root (in semitones).
+# Templates are ordered from most specific (4+ notes) to least specific (3 notes)
+# so matching prefers the more detailed chord type when ambiguous.
+CHORD_TEMPLATES: Dict[str, FrozenSet[int]] = {
+    # 4-note chords (try first for specificity)
+    'dominant_7th': frozenset({0, 4, 7, 10}),
+    'minor_7th': frozenset({0, 3, 7, 10}),
+    'major_7th': frozenset({0, 4, 7, 11}),
+    # 3-note chords
+    'major': frozenset({0, 4, 7}),
+    'minor': frozenset({0, 3, 7}),
+    'diminished': frozenset({0, 3, 6}),
+    'augmented': frozenset({0, 4, 8}),
+    'sus4': frozenset({0, 5, 7}),
+    'sus2': frozenset({0, 2, 7}),
+}
+
+# Pitch class names for readability (C=0, C#=1, ..., B=11)
+PITCH_CLASS_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+
+# Chord-tone categories (Phase 3B: Chord-Tone Embedding)
+class ChordToneCategory(IntEnum):
+    ROOT = 0
+    CHORD_TONE = 1       # 3rd or 5th of the chord
+    EXTENSION = 2        # 7th, 9th, 11th, 13th
+    PASSING_TONE = 3     # Chromatic/diatonic non-chord tone
+    NON_PITCH = 4        # Non-pitch token or chord-track token
+
+NUM_CHORD_TONE_CATEGORIES = 5
+
+# Extension intervals (used by Phase 3B to classify melody notes)
+EXTENSION_INTERVALS = frozenset({1, 2, 5, 6, 8, 9, 10, 11})
 
 
 # ============================================================================
@@ -542,6 +580,13 @@ __all__ = [
     'MAX_TEMPO_CONDITION',
     'TEMPO_NONE_VALUE',
     'CONDITION_EMBED_DIM',
+
+    # Chord templates (Phase 3A)
+    'CHORD_TEMPLATES',
+    'PITCH_CLASS_NAMES',
+    'ChordToneCategory',
+    'NUM_CHORD_TONE_CATEGORIES',
+    'EXTENSION_INTERVALS',
 
     # Utility functions
     'get_token_type',
