@@ -3,7 +3,7 @@ Chord voicing normalization module.
 
 Analyzes chord notes within each bar of a tokenized sequence to identify
 chord root and quality, producing per-bar chord metadata. This metadata
-enables Chord-Tone Embeddings to classify melody notes by their
+enables chord-tone embeddings to classify melody notes by their
 harmonic relationship to the active chord.
 
 The analysis works on already-reordered token sequences (using token_reorderer.py)

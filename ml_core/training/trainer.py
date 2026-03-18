@@ -194,7 +194,9 @@ class Trainer:
             'max_len': self.config.context_length,
             'dropout': self.config.dropout,
             'use_track_embeddings': self.config.use_track_embeddings,
-            'num_track_types': self.config.num_track_types
+            'num_track_types': self.config.num_track_types,
+            'use_conditioning': self.config.use_conditioning,
+            'use_chord_tone_embeddings': self.config.use_chord_tone_embeddings,
         }
 
     def _get_extra_state(self) -> Dict:
@@ -257,13 +259,16 @@ class Trainer:
                         if time_sig_ids is not None:
                             time_sig_ids = torch.where(dropout_mask, torch.tensor(CONDITION_NONE_ID, device=self.device), time_sig_ids)
 
+                chord_tone_ids = batch.get('chord_tone_ids', None)
+
                 logits, _ = self.model(
                     input_ids=batch['input_ids'],
                     attention_mask=batch['attention_mask'],
                     track_ids=track_ids,
                     key_ids=key_ids,
                     tempo_values=tempo_values,
-                    time_sig_ids=time_sig_ids
+                    time_sig_ids=time_sig_ids,
+                    chord_tone_ids=chord_tone_ids
                 )
 
                 # Compute loss (pass track_ids if using track-aware loss)
@@ -469,13 +474,16 @@ class Trainer:
                     tempo_values = batch.get('tempo_value', None)
                     time_sig_ids = batch.get('time_sig_id', None)
 
+                chord_tone_ids = batch.get('chord_tone_ids', None)
+
                 logits, _ = self.model(
                     input_ids=batch['input_ids'],
                     attention_mask=batch['attention_mask'],
                     track_ids=track_ids,
                     key_ids=key_ids,
                     tempo_values=tempo_values,
-                    time_sig_ids=time_sig_ids
+                    time_sig_ids=time_sig_ids,
+                    chord_tone_ids=chord_tone_ids
                 )
 
                 # Compute loss (pass track_ids if using track-aware loss)

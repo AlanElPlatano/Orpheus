@@ -20,6 +20,9 @@ from ..data.constants import (
     BAR_TOKEN_ID,
     TRACK_TYPE_MELODY,
     TRACK_TYPE_CHORD,
+    CHORD_TEMPLATES,
+    ChordToneCategory,
+    EXTENSION_INTERVALS,
     is_pitch_token,
     is_duration_token
 )
@@ -124,6 +127,118 @@ class TwoStageGenerator:
             track_ids.append(current_track_type)
 
         return torch.tensor([track_ids], dtype=torch.long, device=self.device)
+
+    def _generate_chord_tone_ids(self, tokens: List[int]) -> torch.Tensor:
+        """
+        Generate chord-tone category IDs for a token sequence during generation.
+
+        Analyzes chord sections to identify the active chord per bar, then
+        classifies melody pitch tokens by their harmonic relationship.
+
+        Args:
+            tokens: List of token IDs generated so far
+
+        Returns:
+            Tensor of chord-tone category IDs, shape [1, seq_len]
+        """
+        chord_start_id = self.vocab_info.chord_start_token_id
+        melody_start_id = self.vocab_info.melody_start_token_id
+
+        non_pitch = int(ChordToneCategory.NON_PITCH)
+
+        # First pass: identify chord root and quality per bar
+        bar_chords = {}
+        bar_index = -1
+        in_chord_section = False
+        current_chord_pitches = []
+
+        for token in tokens:
+            if token == BAR_TOKEN_ID:
+                if bar_index >= 0 and current_chord_pitches:
+                    bar_chords[bar_index] = self._identify_bar_chord(current_chord_pitches)
+                bar_index += 1
+                current_chord_pitches = []
+                in_chord_section = False
+                continue
+
+            if token == chord_start_id:
+                in_chord_section = True
+                continue
+
+            if token == melody_start_id:
+                in_chord_section = False
+                continue
+
+            if in_chord_section and token in self.pitch_token_to_midi:
+                current_chord_pitches.append(self.pitch_token_to_midi[token])
+
+        # Flush last bar
+        if bar_index >= 0 and current_chord_pitches:
+            bar_chords[bar_index] = self._identify_bar_chord(current_chord_pitches)
+
+        # Second pass: classify each token
+        chord_tone_ids = []
+        bar_index = -1
+        in_melody_section = False
+
+        for token in tokens:
+            if token == BAR_TOKEN_ID:
+                bar_index += 1
+                in_melody_section = False
+                chord_tone_ids.append(non_pitch)
+                continue
+
+            if token == chord_start_id:
+                in_melody_section = False
+                chord_tone_ids.append(non_pitch)
+                continue
+
+            if token == melody_start_id:
+                in_melody_section = True
+                chord_tone_ids.append(non_pitch)
+                continue
+
+            if in_melody_section and token in self.pitch_token_to_midi:
+                chord_info = bar_chords.get(bar_index)
+                if chord_info is None:
+                    chord_tone_ids.append(int(ChordToneCategory.PASSING_TONE))
+                else:
+                    root, template = chord_info
+                    interval = (self.pitch_token_to_midi[token] - root) % 12
+                    if interval == 0:
+                        chord_tone_ids.append(int(ChordToneCategory.ROOT))
+                    elif interval in template:
+                        chord_tone_ids.append(int(ChordToneCategory.CHORD_TONE))
+                    elif interval in EXTENSION_INTERVALS:
+                        chord_tone_ids.append(int(ChordToneCategory.EXTENSION))
+                    else:
+                        chord_tone_ids.append(int(ChordToneCategory.PASSING_TONE))
+            else:
+                chord_tone_ids.append(non_pitch)
+
+        return torch.tensor([chord_tone_ids], dtype=torch.long, device=self.device)
+
+    def _identify_bar_chord(self, midi_pitches: List[int]):
+        """
+        Identify chord root and template from raw MIDI pitches.
+
+        Args:
+            midi_pitches: List of MIDI pitch values from the chord section
+
+        Returns:
+            Tuple of (root_pitch_class, template_intervals) or None if unidentifiable
+        """
+        pitch_classes = frozenset(p % 12 for p in midi_pitches)
+        if len(pitch_classes) < 2:
+            return None
+
+        from midi_parser.core.chord_analyzer import identify_chord
+        root, quality = identify_chord(pitch_classes)
+
+        if root < 0 or quality not in CHORD_TEMPLATES:
+            return None
+
+        return (root, CHORD_TEMPLATES[quality])
 
     def generate_complete_sequence(
         self,
@@ -320,10 +435,11 @@ class TwoStageGenerator:
                         )
                     break
 
-                # Generate track IDs for current sequence
+                # Generate track IDs and chord-tone IDs for current sequence
                 # Default to MELODY to match training data: preamble tokens
                 # (BOS, BAR, TimeSig, Tempo) are all MELODY until ChordStart appears
                 track_ids_tensor = self._generate_track_ids(generated_tokens, default_track_type=TRACK_TYPE_MELODY)
+                chord_tone_ids_tensor = self._generate_chord_tone_ids(generated_tokens)
 
                 # Forward pass through model
                 logits, _ = self.model(
@@ -331,7 +447,8 @@ class TwoStageGenerator:
                     track_ids=track_ids_tensor,
                     key_ids=key_ids,
                     tempo_values=tempo_values,
-                    time_sig_ids=time_sig_ids
+                    time_sig_ids=time_sig_ids,
+                    chord_tone_ids=chord_tone_ids_tensor
                 )
 
                 # Get logits for last token
@@ -451,9 +568,9 @@ class TwoStageGenerator:
                     input_ids = input_ids[:, -self.model.max_len:]
                     generated_tokens = generated_tokens[-self.model.max_len:]
 
-                # Generate track IDs - uses ChordStart/MelodyStart markers in the
-                # sequence to assign correct track types dynamically
+                # Generate track IDs and chord-tone IDs dynamically from the sequence
                 track_ids_tensor = self._generate_track_ids(generated_tokens, default_track_type=TRACK_TYPE_MELODY)
+                chord_tone_ids_tensor = self._generate_chord_tone_ids(generated_tokens)
 
                 # Forward pass through model
                 logits, _ = self.model(
@@ -461,7 +578,8 @@ class TwoStageGenerator:
                     track_ids=track_ids_tensor,
                     key_ids=key_ids,
                     tempo_values=tempo_values,
-                    time_sig_ids=time_sig_ids
+                    time_sig_ids=time_sig_ids,
+                    chord_tone_ids=chord_tone_ids_tensor
                 )
 
                 # Get logits for last token

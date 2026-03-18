@@ -26,7 +26,8 @@ from ..data.constants import (
     CONDITION_EMBED_DIM,
     TEMPO_NONE_VALUE,
     MIN_TEMPO_CONDITION,
-    MAX_TEMPO_CONDITION
+    MAX_TEMPO_CONDITION,
+    NUM_CHORD_TONE_CATEGORIES,
 )
 
 
@@ -196,6 +197,48 @@ class TrackEmbedding(nn.Module):
         return self.embedding(track_ids)
 
 
+class ChordToneEmbedding(nn.Module):
+    """
+    Chord-tone relationship embedding layer.
+
+    Encodes each token's harmonic relationship to the active chord:
+    ROOT, CHORD_TONE, EXTENSION, PASSING_TONE, or NON_PITCH.
+    This helps the model understand how melody notes relate to the
+    underlying harmony.
+    """
+
+    def __init__(
+        self,
+        num_categories: int = NUM_CHORD_TONE_CATEGORIES,
+        hidden_dim: int = HIDDEN_DIM
+    ):
+        """
+        Initialize chord-tone embeddings.
+
+        Args:
+            num_categories: Number of chord-tone categories (default: 5)
+            hidden_dim: Dimension of embedding vectors (default: 512)
+        """
+        super().__init__()
+        self.num_categories = num_categories
+        self.hidden_dim = hidden_dim
+
+        self.embedding = nn.Embedding(num_categories, hidden_dim)
+        nn.init.xavier_uniform_(self.embedding.weight)
+
+    def forward(self, chord_tone_ids: torch.Tensor) -> torch.Tensor:
+        """
+        Convert chord-tone category IDs to embeddings.
+
+        Args:
+            chord_tone_ids: Category IDs, shape [batch_size, seq_len]
+
+        Returns:
+            Embeddings, shape [batch_size, seq_len, hidden_dim]
+        """
+        return self.embedding(chord_tone_ids)
+
+
 class ConditionEmbedding(nn.Module):
     """
     Conditional generation embedding layer that encodes key, tempo, and time signature.
@@ -328,7 +371,8 @@ class MusicEmbedding(nn.Module):
         dropout: float = DROPOUT,
         use_track_embeddings: bool = True,
         num_track_types: int = NUM_TRACK_TYPES,
-        use_conditioning: bool = False
+        use_conditioning: bool = False,
+        use_chord_tone_embeddings: bool = False
     ):
         """
         Initialize music embedding.
@@ -341,6 +385,7 @@ class MusicEmbedding(nn.Module):
             use_track_embeddings: Whether to include track type embeddings (default: True)
             num_track_types: Number of track types (default: 2)
             use_conditioning: Whether to include conditional generation embeddings (default: False)
+            use_chord_tone_embeddings: Whether to include chord-tone relationship embeddings (default: False)
         """
         super().__init__()
 
@@ -349,6 +394,7 @@ class MusicEmbedding(nn.Module):
         self.max_len = max_len
         self.use_track_embeddings = use_track_embeddings
         self.use_conditioning = use_conditioning
+        self.use_chord_tone_embeddings = use_chord_tone_embeddings
 
         # Token embeddings
         self.token_embedding = TokenEmbedding(vocab_size, hidden_dim)
@@ -368,6 +414,12 @@ class MusicEmbedding(nn.Module):
         else:
             self.condition_embedding = None
 
+        # Chord-tone relationship embeddings (optional)
+        if use_chord_tone_embeddings:
+            self.chord_tone_embedding = ChordToneEmbedding(NUM_CHORD_TONE_CATEGORIES, hidden_dim)
+        else:
+            self.chord_tone_embedding = None
+
         # Scaling factor (as in original Transformer paper)
         # Helps stabilize training by preventing embeddings from being too large
         self.scale = math.sqrt(hidden_dim)
@@ -378,10 +430,12 @@ class MusicEmbedding(nn.Module):
         track_ids: Optional[torch.Tensor] = None,
         key_ids: Optional[torch.Tensor] = None,
         tempo_values: Optional[torch.Tensor] = None,
-        time_sig_ids: Optional[torch.Tensor] = None
+        time_sig_ids: Optional[torch.Tensor] = None,
+        chord_tone_ids: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         """
-        Convert token IDs to embeddings with positional, track, and conditioning information.
+        Convert token IDs to embeddings with positional, track, conditioning,
+        and chord-tone information.
 
         Args:
             token_ids: Token IDs, shape [batch_size, seq_len]
@@ -393,6 +447,8 @@ class MusicEmbedding(nn.Module):
                          0.0 = "none", 90-140 = specific tempo
             time_sig_ids: Time signature condition IDs, shape [batch_size] (optional)
                          0 = "none", 1-9 = specific time signatures
+            chord_tone_ids: Chord-tone category IDs, shape [batch_size, seq_len] (optional)
+                           Each element is 0-4 (ROOT, CHORD_TONE, EXTENSION, PASSING_TONE, NON_PITCH)
 
         Returns:
             Embeddings with all encoding applied, shape [batch_size, seq_len, hidden_dim]
@@ -403,19 +459,20 @@ class MusicEmbedding(nn.Module):
         # Add track embeddings if provided and enabled
         if self.use_track_embeddings and track_ids is not None:
             track_emb = self.track_embedding(track_ids)
-            # Add track embeddings to token embeddings (similar to segment embeddings in BERT)
             token_emb = token_emb + track_emb
+
+        # Add chord-tone embeddings if provided and enabled
+        if self.use_chord_tone_embeddings and chord_tone_ids is not None:
+            chord_tone_emb = self.chord_tone_embedding(chord_tone_ids)
+            token_emb = token_emb + chord_tone_emb
 
         # Add conditioning if provided and enabled
         if self.use_conditioning and key_ids is not None and tempo_values is not None and time_sig_ids is not None:
             # Get conditioning embedding: [batch_size, hidden_dim]
             condition_emb = self.condition_embedding(key_ids, tempo_values, time_sig_ids)
 
-            # Broadcast conditioning to all sequence positions: [batch_size, hidden_dim] -> [batch_size, 1, hidden_dim]
-            # Then broadcast to [batch_size, seq_len, hidden_dim] via addition
+            # Broadcast conditioning to all sequence positions
             condition_emb = condition_emb.unsqueeze(1)
-
-            # Add conditioning to token embeddings
             token_emb = token_emb + condition_emb
 
         # Add positional encoding (includes dropout)
@@ -429,7 +486,8 @@ def get_embedding_layer(
     dropout: float = DROPOUT,
     use_track_embeddings: bool = True,
     num_track_types: int = NUM_TRACK_TYPES,
-    use_conditioning: bool = False
+    use_conditioning: bool = False,
+    use_chord_tone_embeddings: bool = False
 ) -> MusicEmbedding:
     """
     Factory function to create a music embedding layer.
@@ -442,6 +500,7 @@ def get_embedding_layer(
         use_track_embeddings: Whether to include track type embeddings
         num_track_types: Number of track types
         use_conditioning: Whether to include conditional generation embeddings
+        use_chord_tone_embeddings: Whether to include chord-tone relationship embeddings
 
     Returns:
         MusicEmbedding layer ready to use
@@ -453,7 +512,8 @@ def get_embedding_layer(
         dropout,
         use_track_embeddings,
         num_track_types,
-        use_conditioning
+        use_conditioning,
+        use_chord_tone_embeddings
     )
 
 
@@ -461,6 +521,7 @@ __all__ = [
     'TokenEmbedding',
     'PositionalEncoding',
     'TrackEmbedding',
+    'ChordToneEmbedding',
     'ConditionEmbedding',
     'MusicEmbedding',
     'get_embedding_layer'

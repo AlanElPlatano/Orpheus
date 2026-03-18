@@ -317,6 +317,7 @@ class MusicTransformer(nn.Module):
         use_track_embeddings: bool = True,
         num_track_types: int = NUM_TRACK_TYPES,
         use_conditioning: bool = False,
+        use_chord_tone_embeddings: bool = False,
         use_gradient_checkpointing: bool = False,
         use_flash_attention: bool = True
     ):
@@ -334,6 +335,7 @@ class MusicTransformer(nn.Module):
             use_track_embeddings: Whether to use track type embeddings
             num_track_types: Number of track types
             use_conditioning: Whether to use conditional generation embeddings
+            use_chord_tone_embeddings: Whether to use chord-tone relationship embeddings
             use_gradient_checkpointing: Whether to use gradient checkpointing (saves memory)
             use_flash_attention: Whether to use FlashAttention-compatible attention (saves memory)
         """
@@ -348,9 +350,10 @@ class MusicTransformer(nn.Module):
         self.dropout = dropout
         self.use_track_embeddings = use_track_embeddings
         self.use_conditioning = use_conditioning
+        self.use_chord_tone_embeddings = use_chord_tone_embeddings
         self.use_gradient_checkpointing = use_gradient_checkpointing
 
-        # Embedding layer (token + positional + track + conditioning)
+        # Embedding layer (token + positional + track + conditioning + chord-tone)
         self.embedding = MusicEmbedding(
             vocab_size,
             hidden_dim,
@@ -358,7 +361,8 @@ class MusicTransformer(nn.Module):
             dropout,
             use_track_embeddings,
             num_track_types,
-            use_conditioning
+            use_conditioning,
+            use_chord_tone_embeddings
         )
 
         # Transformer blocks
@@ -402,6 +406,7 @@ class MusicTransformer(nn.Module):
         key_ids: Optional[torch.Tensor] = None,
         tempo_values: Optional[torch.Tensor] = None,
         time_sig_ids: Optional[torch.Tensor] = None,
+        chord_tone_ids: Optional[torch.Tensor] = None,
         return_hidden_states: bool = False
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """
@@ -414,6 +419,7 @@ class MusicTransformer(nn.Module):
             key_ids: Key signature condition IDs, shape [batch_size] (optional)
             tempo_values: Tempo condition values in BPM, shape [batch_size] (optional)
             time_sig_ids: Time signature condition IDs, shape [batch_size] (optional)
+            chord_tone_ids: Chord-tone category IDs, shape [batch_size, seq_len] (optional)
             return_hidden_states: Whether to return final hidden states
 
         Returns:
@@ -421,13 +427,14 @@ class MusicTransformer(nn.Module):
             - logits: Output logits, shape [batch_size, seq_len, vocab_size]
             - hidden_states (optional): Final hidden states before LM head
         """
-        # Get embeddings (with track and conditioning information if provided)
+        # Get embeddings (with track, conditioning, and chord-tone information if provided)
         x = self.embedding(
             input_ids,
             track_ids,
             key_ids,
             tempo_values,
-            time_sig_ids
+            time_sig_ids,
+            chord_tone_ids
         )  # [batch_size, seq_len, hidden_dim]
 
         # Apply transformer blocks with optional gradient checkpointing
@@ -563,6 +570,7 @@ def create_model(
     use_track_embeddings: bool = True,
     num_track_types: int = NUM_TRACK_TYPES,
     use_conditioning: bool = False,
+    use_chord_tone_embeddings: bool = False,
     use_gradient_checkpointing: bool = False,
     use_flash_attention: bool = True
 ) -> MusicTransformer:
@@ -580,6 +588,7 @@ def create_model(
         use_track_embeddings: Whether to use track type embeddings
         num_track_types: Number of track types
         use_conditioning: Whether to use conditional generation embeddings
+        use_chord_tone_embeddings: Whether to use chord-tone relationship embeddings
         use_gradient_checkpointing: Whether to use gradient checkpointing (saves memory)
         use_flash_attention: Whether to use FlashAttention-compatible attention (saves memory)
 
@@ -597,6 +606,7 @@ def create_model(
         use_track_embeddings=use_track_embeddings,
         num_track_types=num_track_types,
         use_conditioning=use_conditioning,
+        use_chord_tone_embeddings=use_chord_tone_embeddings,
         use_gradient_checkpointing=use_gradient_checkpointing,
         use_flash_attention=use_flash_attention
     )

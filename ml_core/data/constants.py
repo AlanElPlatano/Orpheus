@@ -187,7 +187,7 @@ MINOR_SCALE_INTERVALS = [0, 2, 3, 5, 7, 8, 10]  # Natural minor
 
 
 # ============================================================================
-# Chord Template Definitions (Chord Voicing Normalization)
+# Chord Template Definitions
 # ============================================================================
 
 # Each template maps chord quality name -> frozenset of intervals from root (in semitones).
@@ -210,7 +210,7 @@ CHORD_TEMPLATES: Dict[str, FrozenSet[int]] = {
 # Pitch class names for readability (C=0, C#=1, ..., B=11)
 PITCH_CLASS_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 
-# Chord-tone categories (Phase 3B: Chord-Tone Embedding)
+# Chord-tone categories for melody note classification
 class ChordToneCategory(IntEnum):
     ROOT = 0
     CHORD_TONE = 1       # 3rd or 5th of the chord
@@ -220,7 +220,7 @@ class ChordToneCategory(IntEnum):
 
 NUM_CHORD_TONE_CATEGORIES = 5
 
-# Extension intervals (used by Phase 3B to classify melody notes)
+# Extension intervals (used to classify melody notes against active chord)
 EXTENSION_INTERVALS = frozenset({1, 2, 5, 6, 8, 9, 10, 11})
 
 
@@ -581,7 +581,7 @@ __all__ = [
     'TEMPO_NONE_VALUE',
     'CONDITION_EMBED_DIM',
 
-    # Chord templates (Phase 3A)
+    # Chord templates and chord-tone categories
     'CHORD_TEMPLATES',
     'PITCH_CLASS_NAMES',
     'ChordToneCategory',
