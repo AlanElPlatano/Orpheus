@@ -159,7 +159,8 @@ class MusicGenerator:
                 use_track_embeddings=model_config.get('use_track_embeddings', False),
                 num_track_types=model_config.get('num_track_types', 2),
                 use_conditioning=model_config.get('use_conditioning', True),
-                use_chord_tone_embeddings=model_config.get('use_chord_tone_embeddings', False)
+                use_chord_tone_embeddings=model_config.get('use_chord_tone_embeddings', False),
+                use_scale_degree_embeddings=model_config.get('use_scale_degree_embeddings', False)
             )
 
             # Load model weights

@@ -60,6 +60,9 @@ class TrainingConfig:
     use_conditioning: bool = True  # Use conditional generation embeddings (key, tempo, time sig)
     conditioning_dropout: float = 0.2  # Probability of dropping conditions during training (for optional conditioning)
 
+    # Scale degree embeddings
+    use_scale_degree_embeddings: bool = False  # Use scale degree embeddings for functional harmony awareness
+
     # Chord-tone awareness (requires enrichment on data)
     use_chord_tone_embeddings: bool = False  # Use chord-tone relationship embeddings
 

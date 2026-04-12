@@ -197,6 +197,7 @@ class Trainer:
             'num_track_types': self.config.num_track_types,
             'use_conditioning': self.config.use_conditioning,
             'use_chord_tone_embeddings': self.config.use_chord_tone_embeddings,
+            'use_scale_degree_embeddings': self.config.use_scale_degree_embeddings,
         }
 
     def _get_extra_state(self) -> Dict:
@@ -233,6 +234,9 @@ class Trainer:
                 # Pass track_ids if available
                 track_ids = batch.get('track_ids', None)
 
+                # Pass scale_degree_ids if available
+                scale_degree_ids = batch.get('scale_degree_ids', None)
+
                 # Extract and apply conditioning dropout if enabled
                 key_ids = None
                 tempo_values = None
@@ -265,6 +269,7 @@ class Trainer:
                     input_ids=batch['input_ids'],
                     attention_mask=batch['attention_mask'],
                     track_ids=track_ids,
+                    scale_degree_ids=scale_degree_ids,
                     key_ids=key_ids,
                     tempo_values=tempo_values,
                     time_sig_ids=time_sig_ids,
@@ -464,6 +469,9 @@ class Trainer:
                 # Pass track_ids if available
                 track_ids = batch.get('track_ids', None)
 
+                # Pass scale_degree_ids if available
+                scale_degree_ids = batch.get('scale_degree_ids', None)
+
                 # Extract conditioning tensors if enabled (no dropout during validation)
                 key_ids = None
                 tempo_values = None
@@ -480,6 +488,7 @@ class Trainer:
                     input_ids=batch['input_ids'],
                     attention_mask=batch['attention_mask'],
                     track_ids=track_ids,
+                    scale_degree_ids=scale_degree_ids,
                     key_ids=key_ids,
                     tempo_values=tempo_values,
                     time_sig_ids=time_sig_ids,
