@@ -461,6 +461,8 @@ def start_training_session(
             num_track_types=config.num_track_types,
             use_conditioning=True,  # Always enabled because users can choose Auto during generation if unwanted
             use_chord_tone_embeddings=config.use_chord_tone_embeddings,
+            use_scale_degree_embeddings=config.use_scale_degree_embeddings,
+            use_chord_function_embeddings=config.use_chord_function_embeddings,
             use_gradient_checkpointing=config.use_gradient_checkpointing,
             use_flash_attention=config.use_flash_attention
         )

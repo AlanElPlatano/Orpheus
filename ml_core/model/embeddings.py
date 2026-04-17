@@ -28,7 +28,8 @@ from ..data.constants import (
     MIN_TEMPO_CONDITION,
     MAX_TEMPO_CONDITION,
     NUM_CHORD_TONE_CATEGORIES,
-    NUM_SCALE_DEGREE_IDS
+    NUM_SCALE_DEGREE_IDS,
+    NUM_CHORD_FUNCTION_IDS
 )
 
 
@@ -288,6 +289,58 @@ class ScaleDegreeEmbedding(nn.Module):
         return self.embedding(scale_degree_ids)
 
 
+class ChordFunctionEmbedding(nn.Module):
+    """
+    Chord function (Roman numeral) embedding layer.
+
+    Tags each token with the harmonic function of the currently active chord
+    relative to the song's key (I, ii, iii, IV, V, vi, vii°, plus chromatic
+    bII/bIII/bVI/bVII, borrowed/secondary, and unknown).
+
+    This helps the model learn chord-progression patterns like V->I or ii-V-I
+    once and apply them across every key, instead of re-learning them per
+    transposition.
+
+    IDs:
+        0-11: Chromatic intervals from key root (I/i, bII, ii/ii°, ...)
+        12:   Borrowed / secondary (quality doesn't match diatonic expectation)
+        13:   Unknown (no key info or chord root unidentified)
+    """
+
+    def __init__(
+        self,
+        num_functions: int = NUM_CHORD_FUNCTION_IDS,
+        hidden_dim: int = HIDDEN_DIM
+    ):
+        """
+        Initialize chord function embeddings.
+
+        Args:
+            num_functions: Number of chord function IDs (default: 14)
+            hidden_dim: Dimension of embedding vectors (default: 512)
+        """
+        super().__init__()
+        self.num_functions = num_functions
+        self.hidden_dim = hidden_dim
+
+        self.embedding = nn.Embedding(num_functions, hidden_dim)
+        nn.init.xavier_uniform_(self.embedding.weight)
+
+    def forward(self, chord_function_ids: torch.Tensor) -> torch.Tensor:
+        """
+        Convert chord function IDs to embeddings.
+
+        Args:
+            chord_function_ids: Function IDs, shape [batch_size, seq_len]
+                               Each element is 0-11 (interval), 12 (borrowed),
+                               or 13 (unknown)
+
+        Returns:
+            Embeddings, shape [batch_size, seq_len, hidden_dim]
+        """
+        return self.embedding(chord_function_ids)
+
+
 class ConditionEmbedding(nn.Module):
     """
     Conditional generation embedding layer that encodes key, tempo, and time signature.
@@ -422,7 +475,8 @@ class MusicEmbedding(nn.Module):
         num_track_types: int = NUM_TRACK_TYPES,
         use_conditioning: bool = False,
         use_chord_tone_embeddings: bool = False,
-        use_scale_degree_embeddings: bool = False
+        use_scale_degree_embeddings: bool = False,
+        use_chord_function_embeddings: bool = False
     ):
         """
         Initialize music embedding.
@@ -437,6 +491,7 @@ class MusicEmbedding(nn.Module):
             use_conditioning: Whether to include conditional generation embeddings (default: False)
             use_chord_tone_embeddings: Whether to include chord-tone relationship embeddings (default: False)
             use_scale_degree_embeddings: Whether to include scale degree embeddings (default: False)
+            use_chord_function_embeddings: Whether to include chord function (Roman numeral) embeddings (default: False)
         """
         super().__init__()
 
@@ -447,6 +502,7 @@ class MusicEmbedding(nn.Module):
         self.use_conditioning = use_conditioning
         self.use_chord_tone_embeddings = use_chord_tone_embeddings
         self.use_scale_degree_embeddings = use_scale_degree_embeddings
+        self.use_chord_function_embeddings = use_chord_function_embeddings
 
         # Token embeddings
         self.token_embedding = TokenEmbedding(vocab_size, hidden_dim)
@@ -478,6 +534,12 @@ class MusicEmbedding(nn.Module):
         else:
             self.chord_tone_embedding = None
 
+        # Chord function (Roman numeral) embeddings (optional)
+        if use_chord_function_embeddings:
+            self.chord_function_embedding = ChordFunctionEmbedding(NUM_CHORD_FUNCTION_IDS, hidden_dim)
+        else:
+            self.chord_function_embedding = None
+
         # Scaling factor (as in original Transformer paper)
         # Helps stabilize training by preventing embeddings from being too large
         self.scale = math.sqrt(hidden_dim)
@@ -490,10 +552,11 @@ class MusicEmbedding(nn.Module):
         key_ids: Optional[torch.Tensor] = None,
         tempo_values: Optional[torch.Tensor] = None,
         time_sig_ids: Optional[torch.Tensor] = None,
-        chord_tone_ids: Optional[torch.Tensor] = None
+        chord_tone_ids: Optional[torch.Tensor] = None,
+        chord_function_ids: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         """
-        Convert token IDs to embeddings with positional, track, chord-tone, scale degree, and conditioning information.
+        Convert token IDs to embeddings with positional, track, chord-tone, scale degree, chord function, and conditioning information.
 
         Args:
             token_ids: Token IDs, shape [batch_size, seq_len]
@@ -509,6 +572,8 @@ class MusicEmbedding(nn.Module):
                          0 = "none", 1-9 = specific time signatures
             chord_tone_ids: Chord-tone category IDs, shape [batch_size, seq_len] (optional)
                            Each element is 0-4 (ROOT, CHORD_TONE, EXTENSION, PASSING_TONE, NON_PITCH)
+            chord_function_ids: Chord function IDs, shape [batch_size, seq_len] (optional)
+                               Each element is 0-11 (interval), 12 (borrowed), or 13 (unknown)
 
         Returns:
             Embeddings with all encoding applied, shape [batch_size, seq_len, hidden_dim]
@@ -530,6 +595,11 @@ class MusicEmbedding(nn.Module):
         if self.use_scale_degree_embeddings and scale_degree_ids is not None:
             sd_emb = self.scale_degree_embedding(scale_degree_ids)
             token_emb = token_emb + sd_emb
+
+        # Add chord function embeddings if provided and enabled
+        if self.use_chord_function_embeddings and chord_function_ids is not None:
+            cf_emb = self.chord_function_embedding(chord_function_ids)
+            token_emb = token_emb + cf_emb
 
         # Add conditioning if provided and enabled
         if self.use_conditioning and key_ids is not None and tempo_values is not None and time_sig_ids is not None:
@@ -553,7 +623,8 @@ def get_embedding_layer(
     num_track_types: int = NUM_TRACK_TYPES,
     use_conditioning: bool = False,
     use_chord_tone_embeddings: bool = False,
-    use_scale_degree_embeddings: bool = False
+    use_scale_degree_embeddings: bool = False,
+    use_chord_function_embeddings: bool = False
 ) -> MusicEmbedding:
     """
     Factory function to create a music embedding layer.
@@ -568,6 +639,7 @@ def get_embedding_layer(
         use_conditioning: Whether to include conditional generation embeddings
         use_chord_tone_embeddings: Whether to include chord-tone relationship embeddings
         use_scale_degree_embeddings: Whether to include scale degree embeddings
+        use_chord_function_embeddings: Whether to include chord function (Roman numeral) embeddings
 
     Returns:
         MusicEmbedding layer ready to use
@@ -581,7 +653,8 @@ def get_embedding_layer(
         num_track_types,
         use_conditioning,
         use_chord_tone_embeddings,
-        use_scale_degree_embeddings
+        use_scale_degree_embeddings,
+        use_chord_function_embeddings
     )
 
 
@@ -591,6 +664,7 @@ __all__ = [
     'TrackEmbedding',
     'ChordToneEmbedding',
     'ScaleDegreeEmbedding',
+    'ChordFunctionEmbedding',
     'ConditionEmbedding',
     'MusicEmbedding',
     'get_embedding_layer'

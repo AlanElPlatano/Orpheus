@@ -23,6 +23,8 @@ from ..data.constants import (
     CHORD_TEMPLATES,
     ChordToneCategory,
     EXTENSION_INTERVALS,
+    CHORD_FUNCTION_UNKNOWN,
+    compute_chord_function,
     is_pitch_token,
     is_duration_token
 )
@@ -217,6 +219,101 @@ class TwoStageGenerator:
                 chord_tone_ids.append(non_pitch)
 
         return torch.tensor([chord_tone_ids], dtype=torch.long, device=self.device)
+
+    def _generate_chord_function_ids(self, tokens: List[int]) -> torch.Tensor:
+        """
+        Generate chord function (Roman numeral) IDs for a token sequence.
+
+        Identifies the active chord per bar (root + quality), computes its
+        function relative to self.config.key, and stamps that function ID on
+        every token within the bar's scope.
+
+        Args:
+            tokens: List of token IDs generated so far
+
+        Returns:
+            Tensor of chord function IDs, shape [1, seq_len]
+        """
+        chord_start_id = self.vocab_info.chord_start_token_id
+        melody_start_id = self.vocab_info.melody_start_token_id
+
+        # First pass: identify chord root + quality string per bar
+        bar_chord_info: Dict[int, tuple] = {}
+        bar_index = -1
+        in_chord_section = False
+        current_chord_pitches: List[int] = []
+
+        for token in tokens:
+            if token == BAR_TOKEN_ID:
+                if bar_index >= 0 and current_chord_pitches:
+                    bar_chord_info[bar_index] = self._identify_bar_chord_full(current_chord_pitches)
+                bar_index += 1
+                current_chord_pitches = []
+                in_chord_section = False
+                continue
+
+            if token == chord_start_id:
+                in_chord_section = True
+                continue
+
+            if token == melody_start_id:
+                in_chord_section = False
+                continue
+
+            if in_chord_section and token in self.pitch_token_to_midi:
+                current_chord_pitches.append(self.pitch_token_to_midi[token])
+
+        if bar_index >= 0 and current_chord_pitches:
+            bar_chord_info[bar_index] = self._identify_bar_chord_full(current_chord_pitches)
+
+        # Precompute function ID per bar
+        key_signature = self.config.key
+        bar_function_lookup: Dict[int, int] = {}
+        for idx, info in bar_chord_info.items():
+            if info is None:
+                bar_function_lookup[idx] = CHORD_FUNCTION_UNKNOWN
+            else:
+                root, quality = info
+                bar_function_lookup[idx] = compute_chord_function(
+                    root, quality, key_signature
+                )
+
+        # Second pass: stamp each token with its bar's function ID
+        chord_function_ids: List[int] = []
+        bar_index = -1
+        current_function = CHORD_FUNCTION_UNKNOWN
+
+        for token in tokens:
+            if token == BAR_TOKEN_ID:
+                bar_index += 1
+                current_function = bar_function_lookup.get(
+                    bar_index, CHORD_FUNCTION_UNKNOWN
+                )
+            chord_function_ids.append(current_function)
+
+        return torch.tensor([chord_function_ids], dtype=torch.long, device=self.device)
+
+    def _identify_bar_chord_full(self, midi_pitches: List[int]):
+        """
+        Identify chord root and quality string from raw MIDI pitches.
+
+        Args:
+            midi_pitches: List of MIDI pitch values from the chord section
+
+        Returns:
+            Tuple of (root_pitch_class, quality_string) or None if unidentifiable
+        """
+        pitch_classes = frozenset(p % 12 for p in midi_pitches)
+        if len(pitch_classes) < 2:
+            return None
+
+        from midi_parser.core.chord_analyzer import identify_chord
+        root, quality = identify_chord(pitch_classes)
+
+        if root < 0 or quality == 'unknown':
+            return None
+
+        return (root, quality)
 
     def _identify_bar_chord(self, midi_pitches: List[int]):
         """
@@ -435,11 +532,12 @@ class TwoStageGenerator:
                         )
                     break
 
-                # Generate track IDs and chord-tone IDs for current sequence
+                # Generate track IDs, chord-tone IDs, and chord function IDs for current sequence
                 # Default to MELODY to match training data: preamble tokens
                 # (BOS, BAR, TimeSig, Tempo) are all MELODY until ChordStart appears
                 track_ids_tensor = self._generate_track_ids(generated_tokens, default_track_type=TRACK_TYPE_MELODY)
                 chord_tone_ids_tensor = self._generate_chord_tone_ids(generated_tokens)
+                chord_function_ids_tensor = self._generate_chord_function_ids(generated_tokens)
 
                 # Forward pass through model
                 logits, _ = self.model(
@@ -448,7 +546,8 @@ class TwoStageGenerator:
                     key_ids=key_ids,
                     tempo_values=tempo_values,
                     time_sig_ids=time_sig_ids,
-                    chord_tone_ids=chord_tone_ids_tensor
+                    chord_tone_ids=chord_tone_ids_tensor,
+                    chord_function_ids=chord_function_ids_tensor
                 )
 
                 # Get logits for last token
@@ -568,9 +667,10 @@ class TwoStageGenerator:
                     input_ids = input_ids[:, -self.model.max_len:]
                     generated_tokens = generated_tokens[-self.model.max_len:]
 
-                # Generate track IDs and chord-tone IDs dynamically from the sequence
+                # Generate track IDs, chord-tone IDs, and chord function IDs dynamically from the sequence
                 track_ids_tensor = self._generate_track_ids(generated_tokens, default_track_type=TRACK_TYPE_MELODY)
                 chord_tone_ids_tensor = self._generate_chord_tone_ids(generated_tokens)
+                chord_function_ids_tensor = self._generate_chord_function_ids(generated_tokens)
 
                 # Forward pass through model
                 logits, _ = self.model(
@@ -579,7 +679,8 @@ class TwoStageGenerator:
                     key_ids=key_ids,
                     tempo_values=tempo_values,
                     time_sig_ids=time_sig_ids,
-                    chord_tone_ids=chord_tone_ids_tensor
+                    chord_tone_ids=chord_tone_ids_tensor,
+                    chord_function_ids=chord_function_ids_tensor
                 )
 
                 # Get logits for last token

@@ -198,6 +198,7 @@ class Trainer:
             'use_conditioning': self.config.use_conditioning,
             'use_chord_tone_embeddings': self.config.use_chord_tone_embeddings,
             'use_scale_degree_embeddings': self.config.use_scale_degree_embeddings,
+            'use_chord_function_embeddings': self.config.use_chord_function_embeddings,
         }
 
     def _get_extra_state(self) -> Dict:
@@ -264,6 +265,7 @@ class Trainer:
                             time_sig_ids = torch.where(dropout_mask, torch.tensor(CONDITION_NONE_ID, device=self.device), time_sig_ids)
 
                 chord_tone_ids = batch.get('chord_tone_ids', None)
+                chord_function_ids = batch.get('chord_function_ids', None)
 
                 logits, _ = self.model(
                     input_ids=batch['input_ids'],
@@ -273,7 +275,8 @@ class Trainer:
                     key_ids=key_ids,
                     tempo_values=tempo_values,
                     time_sig_ids=time_sig_ids,
-                    chord_tone_ids=chord_tone_ids
+                    chord_tone_ids=chord_tone_ids,
+                    chord_function_ids=chord_function_ids
                 )
 
                 # Compute loss (pass track_ids if using track-aware loss)
@@ -483,6 +486,7 @@ class Trainer:
                     time_sig_ids = batch.get('time_sig_id', None)
 
                 chord_tone_ids = batch.get('chord_tone_ids', None)
+                chord_function_ids = batch.get('chord_function_ids', None)
 
                 logits, _ = self.model(
                     input_ids=batch['input_ids'],
@@ -492,7 +496,8 @@ class Trainer:
                     key_ids=key_ids,
                     tempo_values=tempo_values,
                     time_sig_ids=time_sig_ids,
-                    chord_tone_ids=chord_tone_ids
+                    chord_tone_ids=chord_tone_ids,
+                    chord_function_ids=chord_function_ids
                 )
 
                 # Compute loss (pass track_ids if using track-aware loss)

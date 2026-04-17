@@ -33,7 +33,9 @@ from .constants import (
     KEY_NAME_TO_PITCH_CLASS,
     SCALE_DEGREE_NON_PITCH,
     SCALE_DEGREE_UNKNOWN_KEY,
-    compute_scale_degree
+    CHORD_FUNCTION_UNKNOWN,
+    compute_scale_degree,
+    compute_chord_function
 )
 
 
@@ -223,6 +225,54 @@ class MusicTokenDataset(Dataset):
 
         return chord_tone_ids
 
+    def _generate_chord_function_ids(
+        self,
+        tokens: List[int],
+        vocabulary: Dict[str, int],
+        bar_chords: List[Dict],
+        key_signature: Optional[str],
+    ) -> List[int]:
+        """
+        Generate chord function (Roman numeral) IDs for each token.
+
+        Every token within a bar's scope shares the chord function of that
+        bar's active chord. This lets both chord and melody tokens see the
+        same harmonic-function context.
+
+        Args:
+            tokens: List of token IDs
+            vocabulary: Token name -> ID mapping from the JSON file
+            bar_chords: Per-bar chord info from chord voicing analysis
+            key_signature: Key name string (e.g. "Am") or None
+
+        Returns:
+            List of chord function IDs (one per token)
+        """
+        bar_id = vocabulary.get("Bar_None", BAR_TOKEN_ID)
+
+        # Pre-compute function ID per bar
+        bar_function_lookup: Dict[int, int] = {}
+        for bc in bar_chords:
+            bar_function_lookup[bc['bar_index']] = compute_chord_function(
+                bc['chord_root'],
+                bc['chord_quality'],
+                key_signature,
+            )
+
+        chord_function_ids: List[int] = []
+        bar_index = -1
+        current_function = CHORD_FUNCTION_UNKNOWN
+
+        for token_id in tokens:
+            if token_id == bar_id:
+                bar_index += 1
+                current_function = bar_function_lookup.get(
+                    bar_index, CHORD_FUNCTION_UNKNOWN
+                )
+            chord_function_ids.append(current_function)
+
+        return chord_function_ids
+
     def _compute_scale_degree_ids(
         self,
         tokens: List[int],
@@ -281,6 +331,9 @@ class MusicTokenDataset(Dataset):
 
         key_signature = metadata.get('key_signature', None)
         scale_degree_ids = self._compute_scale_degree_ids(tokens, key_signature)
+        chord_function_ids = self._generate_chord_function_ids(
+            tokens, vocabulary, bar_chords, key_signature
+        )
 
         # Determine the scale degree ID to use for special/padding tokens
         # If key is known, special tokens get NON_PITCH; if unknown, they get UNKNOWN_KEY
@@ -295,6 +348,7 @@ class MusicTokenDataset(Dataset):
             track_ids = [first_track] + track_ids
             chord_tone_ids = [non_pitch] + chord_tone_ids
             scale_degree_ids = [special_sd_id] + scale_degree_ids
+            chord_function_ids = [CHORD_FUNCTION_UNKNOWN] + chord_function_ids
 
         if self.add_eos:
             tokens = tokens + [EOS_TOKEN_ID]
@@ -302,6 +356,7 @@ class MusicTokenDataset(Dataset):
             track_ids = track_ids + [last_track]
             chord_tone_ids = chord_tone_ids + [non_pitch]
             scale_degree_ids = scale_degree_ids + [special_sd_id]
+            chord_function_ids = chord_function_ids + [CHORD_FUNCTION_UNKNOWN]
 
         # Truncate if necessary
         if len(tokens) > self.max_length:
@@ -309,6 +364,7 @@ class MusicTokenDataset(Dataset):
             track_ids = track_ids[:self.max_length]
             chord_tone_ids = chord_tone_ids[:self.max_length]
             scale_degree_ids = scale_degree_ids[:self.max_length]
+            chord_function_ids = chord_function_ids[:self.max_length]
 
         # Create attention mask (1 for real tokens, 0 for padding)
         attention_mask = [1] * len(tokens)
@@ -321,6 +377,7 @@ class MusicTokenDataset(Dataset):
             track_ids = track_ids + [TRACK_TYPE_MELODY] * num_padding
             chord_tone_ids = chord_tone_ids + [non_pitch] * num_padding
             scale_degree_ids = scale_degree_ids + [special_sd_id] * num_padding
+            chord_function_ids = chord_function_ids + [CHORD_FUNCTION_UNKNOWN] * num_padding
 
         # Convert to tensors
         input_ids = torch.tensor(tokens, dtype=torch.long)
@@ -328,6 +385,7 @@ class MusicTokenDataset(Dataset):
         track_ids_tensor = torch.tensor(track_ids, dtype=torch.long)
         chord_tone_ids_tensor = torch.tensor(chord_tone_ids, dtype=torch.long)
         scale_degree_ids_tensor = torch.tensor(scale_degree_ids, dtype=torch.long)
+        chord_function_ids_tensor = torch.tensor(chord_function_ids, dtype=torch.long)
 
         # Create labels for next-token prediction
         # Labels should be input_ids shifted left by 1 (predict the next token)
@@ -384,6 +442,7 @@ class MusicTokenDataset(Dataset):
             'track_ids': track_ids_tensor,
             'chord_tone_ids': chord_tone_ids_tensor,
             'scale_degree_ids': scale_degree_ids_tensor,
+            'chord_function_ids': chord_function_ids_tensor,
             'labels': labels,
             # Conditioning tensors (per-batch scalars, not per-token)
             'key_id': key_id_tensor,
@@ -436,10 +495,11 @@ def _estimate_cache_memory_bytes(num_samples: int, max_length: int) -> int:
     Returns:
         Estimated memory in bytes
     """
-    # Each sample contains 6 tensors (input_ids, attention_mask, labels, track_ids, chord_tone_ids, scale_degree_ids)
+    # Each sample contains 7 tensors (input_ids, attention_mask, labels, track_ids,
+    # chord_tone_ids, scale_degree_ids, chord_function_ids)
     # Each tensor has max_length elements of int64 (8 bytes each)
     bytes_per_tensor = max_length * 8
-    bytes_per_sample_tensors = bytes_per_tensor * 5
+    bytes_per_sample_tensors = bytes_per_tensor * 7
 
     # Add overhead for metadata dict and file path string (~1 KB per sample)
     bytes_per_sample_overhead = 1024
@@ -552,6 +612,7 @@ def collate_fn(batch: List[Dict[str, torch.Tensor]], dynamic_padding: bool = Tru
     track_ids = [item['track_ids'] for item in batch]
     chord_tone_ids = [item['chord_tone_ids'] for item in batch]
     scale_degree_ids = [item['scale_degree_ids'] for item in batch]
+    chord_function_ids = [item['chord_function_ids'] for item in batch]
     labels = [item['labels'] for item in batch]
 
     # If dynamic padding is enabled and sequences have different lengths, repad them
@@ -569,6 +630,7 @@ def collate_fn(batch: List[Dict[str, torch.Tensor]], dynamic_padding: bool = Tru
             track_ids = [tracks[:max_len_in_batch] for tracks in track_ids]
             chord_tone_ids = [ct[:max_len_in_batch] for ct in chord_tone_ids]
             scale_degree_ids = [sd[:max_len_in_batch] for sd in scale_degree_ids]
+            chord_function_ids = [cf[:max_len_in_batch] for cf in chord_function_ids]
             labels = [lbls[:max_len_in_batch] for lbls in labels]
 
     # Stack tensors (they should all be the same length now)
@@ -578,6 +640,7 @@ def collate_fn(batch: List[Dict[str, torch.Tensor]], dynamic_padding: bool = Tru
         'track_ids': torch.stack(track_ids),
         'chord_tone_ids': torch.stack(chord_tone_ids),
         'scale_degree_ids': torch.stack(scale_degree_ids),
+        'chord_function_ids': torch.stack(chord_function_ids),
         'labels': torch.stack(labels)
     }
 

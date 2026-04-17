@@ -319,6 +319,7 @@ class MusicTransformer(nn.Module):
         use_conditioning: bool = False,
         use_chord_tone_embeddings: bool = False,
         use_scale_degree_embeddings: bool = False,
+        use_chord_function_embeddings: bool = False,
         use_gradient_checkpointing: bool = False,
         use_flash_attention: bool = True
     ):
@@ -338,6 +339,7 @@ class MusicTransformer(nn.Module):
             use_conditioning: Whether to use conditional generation embeddings
             use_chord_tone_embeddings: Whether to use chord-tone relationship embeddings
             use_scale_degree_embeddings: Whether to use scale degree embeddings
+            use_chord_function_embeddings: Whether to use chord function (Roman numeral) embeddings
             use_gradient_checkpointing: Whether to use gradient checkpointing (saves memory)
             use_flash_attention: Whether to use FlashAttention-compatible attention (saves memory)
         """
@@ -354,9 +356,10 @@ class MusicTransformer(nn.Module):
         self.use_conditioning = use_conditioning
         self.use_chord_tone_embeddings = use_chord_tone_embeddings
         self.use_scale_degree_embeddings = use_scale_degree_embeddings
+        self.use_chord_function_embeddings = use_chord_function_embeddings
         self.use_gradient_checkpointing = use_gradient_checkpointing
 
-        # Embedding layer (token + positional + track + chord-tone + scale degree + conditioning)
+        # Embedding layer (token + positional + track + chord-tone + scale degree + chord function + conditioning)
         self.embedding = MusicEmbedding(
             vocab_size,
             hidden_dim,
@@ -366,7 +369,8 @@ class MusicTransformer(nn.Module):
             num_track_types,
             use_conditioning,
             use_chord_tone_embeddings,
-            use_scale_degree_embeddings
+            use_scale_degree_embeddings,
+            use_chord_function_embeddings
         )
 
         # Transformer blocks
@@ -412,6 +416,7 @@ class MusicTransformer(nn.Module):
         tempo_values: Optional[torch.Tensor] = None,
         time_sig_ids: Optional[torch.Tensor] = None,
         chord_tone_ids: Optional[torch.Tensor] = None,
+        chord_function_ids: Optional[torch.Tensor] = None,
         return_hidden_states: bool = False
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """
@@ -426,6 +431,7 @@ class MusicTransformer(nn.Module):
             tempo_values: Tempo condition values in BPM, shape [batch_size] (optional)
             time_sig_ids: Time signature condition IDs, shape [batch_size] (optional)
             chord_tone_ids: Chord-tone category IDs, shape [batch_size, seq_len] (optional)
+            chord_function_ids: Chord function IDs, shape [batch_size, seq_len] (optional)
             return_hidden_states: Whether to return final hidden states
 
         Returns:
@@ -433,7 +439,7 @@ class MusicTransformer(nn.Module):
             - logits: Output logits, shape [batch_size, seq_len, vocab_size]
             - hidden_states (optional): Final hidden states before LM head
         """
-        # Get embeddings (with track, chord-tone, scale degree, and conditioning information if provided)
+        # Get embeddings (with track, chord-tone, scale degree, chord function, and conditioning information if provided)
         x = self.embedding(
             input_ids,
             track_ids,
@@ -441,7 +447,8 @@ class MusicTransformer(nn.Module):
             key_ids,
             tempo_values,
             time_sig_ids,
-            chord_tone_ids
+            chord_tone_ids,
+            chord_function_ids
         )  # [batch_size, seq_len, hidden_dim]
 
         # Apply transformer blocks with optional gradient checkpointing
@@ -579,6 +586,7 @@ def create_model(
     use_conditioning: bool = False,
     use_chord_tone_embeddings: bool = False,
     use_scale_degree_embeddings: bool = False,
+    use_chord_function_embeddings: bool = False,
     use_gradient_checkpointing: bool = False,
     use_flash_attention: bool = True
 ) -> MusicTransformer:
@@ -598,6 +606,7 @@ def create_model(
         use_conditioning: Whether to use conditional generation embeddings
         use_chord_tone_embeddings: Whether to use chord-tone relationship embeddings
         use_scale_degree_embeddings: Whether to use scale degree embeddings
+        use_chord_function_embeddings: Whether to use chord function (Roman numeral) embeddings
         use_gradient_checkpointing: Whether to use gradient checkpointing (saves memory)
         use_flash_attention: Whether to use FlashAttention-compatible attention (saves memory)
 
@@ -617,6 +626,7 @@ def create_model(
         use_conditioning=use_conditioning,
         use_chord_tone_embeddings=use_chord_tone_embeddings,
         use_scale_degree_embeddings=use_scale_degree_embeddings,
+        use_chord_function_embeddings=use_chord_function_embeddings,
         use_gradient_checkpointing=use_gradient_checkpointing,
         use_flash_attention=use_flash_attention
     )

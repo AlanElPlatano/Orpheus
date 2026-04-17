@@ -9,7 +9,7 @@ instead of having them scattered randomly throughout 50 files
 """
 
 from enum import IntEnum
-from typing import Dict, FrozenSet, List
+from typing import Dict, FrozenSet, List, Optional, Tuple
 
 
 # ============================================================================
@@ -275,6 +275,120 @@ KEY_NAME_TO_PITCH_CLASS: Dict[str, int] = {
 # Pitch_21 starts at token ID 5 (from TOKEN_RANGES)
 PITCH_TOKEN_ID_START = 5
 PITCH_MIDI_START = 21
+
+
+# ============================================================================
+# Chord Function Constants (for Roman Numeral / Harmonic Function Embeddings)
+# ============================================================================
+
+# Number of chord function embedding IDs:
+#   0-11: chromatic intervals from key root (I/i, bII, ii/ii°, bIII/III, iii,
+#         IV/iv, bV/#IV, V/v, bVI/VI, vi/VI, bVII/VII, vii°)
+#   12:   borrowed/secondary (chord whose quality differs from the diatonic
+#         expectation for its interval in the current mode)
+#   13:   unknown (no key signature, or chord root couldn't be identified)
+NUM_CHORD_FUNCTION_IDS = 14
+CHORD_FUNCTION_BORROWED = 12
+CHORD_FUNCTION_UNKNOWN = 13
+
+# Human-readable names for chord functions
+CHORD_FUNCTION_NAMES: Dict[int, str] = {
+    0: 'I / i',
+    1: 'bII / N',
+    2: 'ii / ii°',
+    3: 'bIII / III',
+    4: 'iii',
+    5: 'IV / iv',
+    6: 'bV / #IV',
+    7: 'V / v',
+    8: 'bVI / VI',
+    9: 'vi',
+    10: 'bVII / VII',
+    11: 'vii°',
+    12: 'Borrowed / Secondary',
+    13: 'Unknown',
+}
+
+# Diatonic expectations per mode.
+# Maps root-interval-from-tonic -> (acceptable qualities, function_id).
+# A chord whose (interval, quality) matches gets the natural function ID;
+# an interval not listed here falls through to its chromatic ID (0-11).
+# A chord whose interval is listed but whose quality is NOT acceptable is
+# tagged as borrowed (CHORD_FUNCTION_BORROWED).
+MAJOR_DIATONIC_FUNCTIONS: Dict[int, Tuple[FrozenSet[str], int]] = {
+    0:  (frozenset({'major', 'major_7th', 'dominant_7th', 'sus2', 'sus4'}), 0),
+    2:  (frozenset({'minor', 'minor_7th'}), 2),
+    4:  (frozenset({'minor', 'minor_7th'}), 4),
+    5:  (frozenset({'major', 'major_7th', 'sus2', 'sus4'}), 5),
+    7:  (frozenset({'major', 'major_7th', 'dominant_7th', 'sus2', 'sus4'}), 7),
+    9:  (frozenset({'minor', 'minor_7th'}), 9),
+    11: (frozenset({'diminished'}), 11),
+}
+
+MINOR_DIATONIC_FUNCTIONS: Dict[int, Tuple[FrozenSet[str], int]] = {
+    0:  (frozenset({'minor', 'minor_7th'}), 0),
+    2:  (frozenset({'diminished'}), 2),
+    3:  (frozenset({'major', 'major_7th'}), 3),
+    5:  (frozenset({'minor', 'minor_7th'}), 5),
+    7:  (frozenset({'minor', 'minor_7th', 'major', 'dominant_7th'}), 7),
+    8:  (frozenset({'major', 'major_7th'}), 8),
+    10: (frozenset({'major', 'major_7th'}), 10),
+}
+
+
+def is_minor_key(key_signature: str) -> bool:
+    """Return True if a key name refers to a minor key (e.g. 'Am', 'F#m')."""
+    return key_signature.endswith('m')
+
+
+def compute_chord_function(
+    chord_root: int,
+    chord_quality: str,
+    key_signature: Optional[str]
+) -> int:
+    """
+    Compute the chord function ID for a chord in a given key.
+
+    The function encodes Roman-numeral harmony: a chord's role (tonic, dominant,
+    etc.) relative to the song's key. This generalizes across keys so the model
+    learns V->I regardless of whether the key is C major or G major.
+
+    Args:
+        chord_root: Root pitch class of the chord (0-11, or -1 if unidentified)
+        chord_quality: Chord quality string (e.g. 'major', 'minor_7th') or
+                       'unknown' if unidentified
+        key_signature: Key name string (e.g. 'C', 'Am', 'F#m') or None
+
+    Returns:
+        Chord function ID:
+          0-11: chromatic interval from key root when chord is diatonic or the
+                interval is inherently chromatic (e.g. bII, bVI)
+          12:   chord is at a diatonic interval but has an unexpected quality
+          13:   key unknown or chord root unidentified
+    """
+    if (
+        key_signature is None
+        or key_signature not in KEY_NAME_TO_PITCH_CLASS
+        or chord_root < 0
+        or chord_quality == 'unknown'
+    ):
+        return CHORD_FUNCTION_UNKNOWN
+
+    key_root = KEY_NAME_TO_PITCH_CLASS[key_signature]
+    interval = (chord_root - key_root) % 12
+
+    diatonic_map = (
+        MINOR_DIATONIC_FUNCTIONS if is_minor_key(key_signature)
+        else MAJOR_DIATONIC_FUNCTIONS
+    )
+
+    if interval in diatonic_map:
+        expected_qualities, function_id = diatonic_map[interval]
+        if chord_quality in expected_qualities:
+            return function_id
+        return CHORD_FUNCTION_BORROWED
+
+    return interval
 
 
 # ============================================================================
@@ -683,6 +797,14 @@ __all__ = [
     'PITCH_TOKEN_ID_START',
     'PITCH_MIDI_START',
 
+    # Chord function constants
+    'NUM_CHORD_FUNCTION_IDS',
+    'CHORD_FUNCTION_BORROWED',
+    'CHORD_FUNCTION_UNKNOWN',
+    'CHORD_FUNCTION_NAMES',
+    'MAJOR_DIATONIC_FUNCTIONS',
+    'MINOR_DIATONIC_FUNCTIONS',
+
     # Utility functions
     'get_token_type',
     'is_special_token',
@@ -694,4 +816,6 @@ __all__ = [
     'get_track_type_from_program',
     'get_midi_pitch_from_token',
     'compute_scale_degree',
+    'is_minor_key',
+    'compute_chord_function',
 ]

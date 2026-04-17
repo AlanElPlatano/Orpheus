@@ -66,6 +66,9 @@ class TrainingConfig:
     # Chord-tone awareness (requires enrichment on data)
     use_chord_tone_embeddings: bool = False  # Use chord-tone relationship embeddings
 
+    # Chord function / Roman numeral embeddings (requires bar_chords metadata + key signature)
+    use_chord_function_embeddings: bool = False  # Use chord function (Roman numeral) embeddings
+
     # Memory optimization settings
     use_gradient_checkpointing: bool = False  # Use gradient checkpointing (trades compute for memory, 40-60% activation memory saved)
     use_flash_attention: bool = True  # Use PyTorch's scaled_dot_product_attention (FlashAttention when available, 20-30% memory saved)
