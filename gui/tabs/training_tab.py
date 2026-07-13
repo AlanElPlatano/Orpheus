@@ -374,6 +374,12 @@ def start_training_session(
         config.dropout = dropout
         config.use_track_embeddings = use_track_embeddings
 
+        # Conditioning must be enabled in the config, not just the model:
+        # the trainer only feeds key/tempo/time signature into the model when
+        # this flag is set. conditioning_dropout teaches the "none" path so
+        # users can still pick Auto during generation.
+        config.use_conditioning = True
+
         # Optimizer settings
         config.weight_decay = weight_decay
         config.adam_beta1 = adam_beta1
@@ -459,7 +465,7 @@ def start_training_session(
             dropout=config.dropout,
             use_track_embeddings=config.use_track_embeddings,
             num_track_types=config.num_track_types,
-            use_conditioning=True,  # Always enabled because users can choose Auto during generation if unwanted
+            use_conditioning=config.use_conditioning,
             use_gradient_checkpointing=config.use_gradient_checkpointing,
             use_flash_attention=config.use_flash_attention
         )
