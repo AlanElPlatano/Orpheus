@@ -884,7 +884,7 @@ def create_training_tab() -> gr.Tab:
                 preset_dropdown = gr.Dropdown(
                     label="Training Preset",
                     choices=["default", "quick_test", "overfit", "production", "track_aware",
-                             "optimized_default", "low_memory (smaller model)", "memory_efficient"],
+                             "optimized_default", ("low_memory (smaller model)", "low_memory"), "memory_efficient"],
                     value="default",
                     info="Select a preset configuration (use 'memory_efficient' for 6-8GB VRAM, 'low_memory' for 4GB)"
                 )
