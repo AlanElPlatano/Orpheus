@@ -9,6 +9,7 @@ constraint and GenerationState from ml_core/model/constraints.py.
 import torch
 import torch.nn.functional as F
 from typing import Optional, List, Set, Dict, FrozenSet
+from collections import Counter
 import logging
 
 from ..data.constants import (
@@ -311,6 +312,103 @@ def apply_chord_repetition_limit(
     return constrained
 
 
+def _extract_melody_pitch_history(
+    generated_tokens: List[int],
+    vocab_info: 'VocabularyInfo'
+) -> List[int]:
+    """
+    Collect melody-section pitch tokens in generation order.
+
+    Tokens before any structural marker count as melody, matching how
+    track IDs are assigned during generation.
+    """
+    chord_start_id = vocab_info.chord_start_token_id
+    melody_start_id = vocab_info.melody_start_token_id
+
+    in_melody = True
+    melody_pitches = []
+
+    for token in generated_tokens:
+        if token == chord_start_id:
+            in_melody = False
+        elif token == melody_start_id:
+            in_melody = True
+        elif in_melody and vocab_info.is_pitch_token(token):
+            melody_pitches.append(token)
+
+    return melody_pitches
+
+
+def apply_melody_pitch_variety_constraint(
+    logits: torch.Tensor,
+    state: GenerationState,
+    generated_tokens: List[int],
+    vocab_info: 'VocabularyInfo',
+    window_size: int = 8,
+    repetition_penalty: float = 1.2,
+    max_consecutive_same_pitch: int = 6,
+    mask_value: float = float('-inf')
+) -> torch.Tensor:
+    """
+    Fight melody pitch collapse with a soft penalty and a hard cap.
+
+    Soft penalty: each pitch's logit is penalized proportionally to how
+    often that pitch appeared in the last window_size melody notes, so a
+    pitch that starts dominating the window becomes progressively less
+    likely. Hard cap: after max_consecutive_same_pitch identical melody
+    pitches in a row, that pitch is masked for the next note, so a fully
+    collapsed one-note melody can never be produced.
+
+    Training data melodies repeat their top pitch ~40% of the time, so
+    mild repetition must stay allowed; the defaults only target the
+    degenerate 95-100% single-pitch loops. Chord sections are untouched.
+
+    Args:
+        logits: Model output logits, shape [batch_size, vocab_size]
+        state: Current generation state
+        generated_tokens: Previously generated token IDs
+        vocab_info: Vocabulary information
+        window_size: Number of recent melody notes for the soft penalty
+        repetition_penalty: Per-occurrence penalty base (1.0 = disabled)
+        max_consecutive_same_pitch: Run length that triggers the hard mask
+        mask_value: Value to use for masked positions
+
+    Returns:
+        Logits with melody variety constraint applied
+    """
+    if state.current_track != 'melody':
+        return logits
+
+    melody_pitches = _extract_melody_pitch_history(generated_tokens, vocab_info)
+    if not melody_pitches:
+        return logits
+
+    logits = logits.clone()
+
+    # Soft penalty: discourage pitches that dominate the recent window
+    recent = melody_pitches[-window_size:]
+    for pitch_id, count in Counter(recent).items():
+        factor = repetition_penalty ** count
+        value = logits[:, pitch_id]
+        logits[:, pitch_id] = torch.where(value > 0, value / factor, value * factor)
+
+    # Hard cap: block the pitch outright after a long unbroken run
+    run_pitch = melody_pitches[-1]
+    run_length = 0
+    for pitch_id in reversed(melody_pitches):
+        if pitch_id != run_pitch:
+            break
+        run_length += 1
+
+    if run_length >= max_consecutive_same_pitch:
+        logits[:, run_pitch] = mask_value
+        logger.debug(
+            f"Masked melody pitch {run_pitch} after {run_length} consecutive notes"
+        )
+
+    return logits
+
+
 def apply_consecutive_repetition_constraint(
     logits: torch.Tensor,
     generated_tokens: List[int],
@@ -520,6 +618,12 @@ def apply_all_constraints(
 
     logits = apply_monophony_constraint(logits, state, vocab_info=vocab_info)
 
+    # Fight melody pitch collapse (soft penalty + hard cap on repeated pitches)
+    if generated_tokens is not None:
+        logits = apply_melody_pitch_variety_constraint(
+            logits, state, generated_tokens, vocab_info
+        )
+
     # Apply chord sustain constraint (enhanced version)
     logits = apply_chord_sustain_constraint_enhanced(logits, state, vocab_info)
 
@@ -625,6 +729,7 @@ __all__ = [
     'get_diatonic_token_ids',
     'update_generation_state',
     'apply_grammar_constraint',
+    'apply_melody_pitch_variety_constraint',
     'apply_chord_repetition_limit',
     'apply_consecutive_repetition_constraint',
     'apply_diatonic_boost_enhanced',
