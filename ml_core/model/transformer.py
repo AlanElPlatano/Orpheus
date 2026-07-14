@@ -114,37 +114,32 @@ class MultiHeadAttention(nn.Module):
         # Use PyTorch's optimized scaled_dot_product_attention if available (PyTorch 2.0+)
         # This uses FlashAttention when possible, which is much more memory efficient
         if self.use_flash_attention and hasattr(F, 'scaled_dot_product_attention'):
-            # Build combined attention mask: causal + padding
-            # PyTorch's SDPA doesn't allow both attn_mask and is_causal=True,
-            # so we must combine them manually into a single mask.
-            attn_mask = None
-
-            if causal_mask:
-                # Create causal mask: upper triangle = -inf
-                seq_len_q = q.size(2)
-                seq_len_k = k.size(2)
-                attn_mask = torch.triu(
-                    torch.full((seq_len_q, seq_len_k), float('-inf'), device=q.device, dtype=q.dtype),
-                    diagonal=1
+            if attention_mask is None:
+                # FlashAttention can only be dispatched when no explicit mask
+                # tensor is passed, so express causality via is_causal
+                attn_output = F.scaled_dot_product_attention(
+                    q, k, v,
+                    attn_mask=None,
+                    dropout_p=self.dropout if self.training else 0.0,
+                    is_causal=causal_mask
                 )
-
-            if attention_mask is not None:
-                # Convert padding mask [batch_size, seq_len] to [batch_size, 1, 1, seq_len]
-                padding_mask = attention_mask.unsqueeze(1).unsqueeze(2)
-                padding_mask = padding_mask.float().masked_fill(padding_mask == 0, float('-inf'))
-                padding_mask = padding_mask.masked_fill(padding_mask == 1, 0.0)
-                if attn_mask is not None:
-                    # Combine: broadcast causal [seq, seq] + padding [batch, 1, 1, seq]
-                    attn_mask = attn_mask.unsqueeze(0).unsqueeze(0) + padding_mask
-                else:
-                    attn_mask = padding_mask
-
-            attn_output = F.scaled_dot_product_attention(
-                q, k, v,
-                attn_mask=attn_mask,
-                dropout_p=self.dropout if self.training else 0.0,
-                is_causal=False  # Causal masking is handled in attn_mask above
-            )
+            else:
+                # SDPA doesn't allow both attn_mask and is_causal=True, so
+                # combine padding and causality into one boolean mask
+                # (True = may attend). Boolean masks also avoid dtype
+                # mismatches with fp16 queries under mixed precision.
+                attn_mask = attention_mask[:, None, None, :].bool()
+                if causal_mask:
+                    causal = torch.tril(
+                        torch.ones(seq_len, seq_len, device=x.device, dtype=torch.bool)
+                    )
+                    attn_mask = attn_mask & causal
+                attn_output = F.scaled_dot_product_attention(
+                    q, k, v,
+                    attn_mask=attn_mask,
+                    dropout_p=self.dropout if self.training else 0.0,
+                    is_causal=False
+                )
         else:
             # Fall back to manual attention computation
             # Compute attention scores: [batch_size, num_heads, seq_len, seq_len]
@@ -421,6 +416,12 @@ class MusicTransformer(nn.Module):
             - logits: Output logits, shape [batch_size, seq_len, vocab_size]
             - hidden_states (optional): Final hidden states before LM head
         """
+        # An all-ones padding mask is equivalent to no mask; dropping it here
+        # lets attention take the FlashAttention path instead of building an
+        # explicit mask tensor
+        if attention_mask is not None and bool(attention_mask.all()):
+            attention_mask = None
+
         # Get embeddings (with track and conditioning information if provided)
         x = self.embedding(
             input_ids,
