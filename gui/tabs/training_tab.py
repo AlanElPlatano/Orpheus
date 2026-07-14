@@ -374,6 +374,12 @@ def start_training_session(
         config.dropout = dropout
         config.use_track_embeddings = use_track_embeddings
 
+        # Conditioning must be enabled in the config, not just the model:
+        # the trainer only feeds key/tempo/time signature into the model when
+        # this flag is set. conditioning_dropout teaches the "none" path so
+        # users can still pick Auto during generation.
+        config.use_conditioning = True
+
         # Optimizer settings
         config.weight_decay = weight_decay
         config.adam_beta1 = adam_beta1
@@ -459,7 +465,7 @@ def start_training_session(
             dropout=config.dropout,
             use_track_embeddings=config.use_track_embeddings,
             num_track_types=config.num_track_types,
-            use_conditioning=True,  # Always enabled because users can choose Auto during generation if unwanted
+            use_conditioning=config.use_conditioning,
             use_gradient_checkpointing=config.use_gradient_checkpointing,
             use_flash_attention=config.use_flash_attention
         )
@@ -884,7 +890,7 @@ def create_training_tab() -> gr.Tab:
                 preset_dropdown = gr.Dropdown(
                     label="Training Preset",
                     choices=["default", "quick_test", "overfit", "production", "track_aware",
-                             "optimized_default", "low_memory (smaller model)", "memory_efficient"],
+                             "optimized_default", ("low_memory (smaller model)", "low_memory"), "memory_efficient"],
                     value="default",
                     info="Select a preset configuration (use 'memory_efficient' for 6-8GB VRAM, 'low_memory' for 4GB)"
                 )
