@@ -127,6 +127,7 @@ def start_generation(
     tempo: float,
     time_signature: str,
     apply_chord_sustain: bool,
+    seed: Optional[int] = None,
     progress=gr.Progress()
 ) -> Tuple[str, pd.DataFrame, str]:
     """Start music generation."""
@@ -159,8 +160,11 @@ def start_generation(
         config.tempo = None if auto_tempo else tempo
         config.time_signature = None if time_signature == "Auto" else parse_time_signature(time_signature)
 
-        # Update generator config
-        app_state.generator.config = config
+        # Seed for reproducible generation (each file in the batch uses seed + index)
+        config.seed = int(seed) if seed is not None else None
+
+        # Update generator config (keeps two-stage generator in sync)
+        app_state.generator.update_config(config)
 
         # Define progress callback
         def progress_callback(current, total, result: GenerationResult):
@@ -408,6 +412,13 @@ def create_generator_tab() -> gr.Tab:
                     value="./generated"
                 )
 
+                seed_input = gr.Number(
+                    label="Seed (optional)",
+                    value=None,
+                    precision=0,
+                    info="Same seed + same model = same files. Leave empty for random results."
+                )
+
                 chord_sustain_checkbox = gr.Checkbox(
                     label="Apply Chord Sustain Post-Processing",
                     value=True,
@@ -533,7 +544,8 @@ def create_generator_tab() -> gr.Tab:
                 auto_tempo_checkbox,
                 tempo_slider,
                 time_sig_dropdown,
-                chord_sustain_checkbox
+                chord_sustain_checkbox,
+                seed_input
             ],
             outputs=[
                 generation_status,

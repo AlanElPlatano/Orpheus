@@ -267,8 +267,8 @@ def generate_melody_from_custom_chords(
         config.tempo = None if tempo == 0.0 else tempo
         config.time_signature = None if time_signature == "Auto" else parse_time_signature(time_signature)
 
-        # Update generator config
-        app_state.generator.config = config
+        # Update generator config (keeps two-stage generator in sync)
+        app_state.generator.update_config(config)
 
         # Create conditioning tensors
         device = app_state.generator.device
