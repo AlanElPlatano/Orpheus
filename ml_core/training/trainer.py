@@ -350,33 +350,12 @@ class Trainer:
                             step=self.global_step,
                             prefix="val/"
                         )
+                        self._handle_validation_result(val_metrics)
 
-                        # Save best model
-                        if val_metrics['loss'] < self.best_val_loss:
-                            self.best_val_loss = val_metrics['loss']
-                            self.patience_counter = 0
-                            save_best_model(
-                                checkpoint_dir=self.config.checkpoint_dir,
-                                model=self.model,
-                                optimizer=self.optimizer,
-                                scheduler=self.scheduler,
-                                epoch=self.current_epoch,
-                                step=self.global_step,
-                                val_loss=self.best_val_loss,
-                                config=self.config.to_dict(),
-                                model_config=self._get_model_config(),
-                                extra_state=self._get_extra_state()
-                            )
-                            self.logger.log(f"New best model saved! Val loss: {self.best_val_loss:.4f}")
-                        else:
-                            self.patience_counter += 1
-
-                        # Early stopping check
-                        if self.config.early_stopping and \
-                           self.patience_counter >= self.config.early_stopping_patience:
+                        if self._early_stopping_triggered():
                             self.logger.log(
                                 f"Early stopping triggered after {self.patience_counter} "
-                                f"validation intervals without improvement"
+                                f"validations without improvement"
                             )
                             return metrics_tracker.get_averages()
 
@@ -493,6 +472,38 @@ class Trainer:
 
         return metrics_tracker.get_averages()
 
+    def _handle_validation_result(self, val_metrics: Dict[str, float]):
+        """
+        Update best-model checkpoint and early-stopping state from a validation result.
+
+        Called after every validation (both step-interval and end-of-epoch)
+        so that all validation results count toward model selection.
+        """
+        improvement = self.best_val_loss - val_metrics['loss']
+        if improvement > self.config.early_stopping_min_delta:
+            self.best_val_loss = val_metrics['loss']
+            self.patience_counter = 0
+            save_best_model(
+                checkpoint_dir=self.config.checkpoint_dir,
+                model=self.model,
+                optimizer=self.optimizer,
+                scheduler=self.scheduler,
+                epoch=self.current_epoch,
+                step=self.global_step,
+                val_loss=self.best_val_loss,
+                config=self.config.to_dict(),
+                model_config=self._get_model_config(),
+                extra_state=self._get_extra_state()
+            )
+            self.logger.log(f"New best model saved! Val loss: {self.best_val_loss:.4f}")
+        else:
+            self.patience_counter += 1
+
+    def _early_stopping_triggered(self) -> bool:
+        """Check whether training should stop for lack of validation improvement."""
+        return self.config.early_stopping and \
+            self.patience_counter >= self.config.early_stopping_patience
+
     def train(self):
         """
         Main training loop.
@@ -512,15 +523,19 @@ class Trainer:
                 # Train for one epoch
                 train_metrics = self.train_epoch()
 
-                # Validate at end of epoch
+                # Validate at end of epoch (skipped if early stopping already
+                # triggered during the epoch)
                 val_metrics = None
-                if self.config.do_validation and self.val_loader is not None:
+                if self.config.do_validation and \
+                   self.val_loader is not None and \
+                   not self._early_stopping_triggered():
                     val_metrics = self.validate()
                     self.logger.log_metrics(
                         val_metrics,
                         step=self.global_step,
                         prefix="val/"
                     )
+                    self._handle_validation_result(val_metrics)
 
                 # Print epoch summary
                 print_epoch_summary(
@@ -537,8 +552,7 @@ class Trainer:
                     break
 
                 # Check early stopping
-                if self.config.early_stopping and \
-                   self.patience_counter >= self.config.early_stopping_patience:
+                if self._early_stopping_triggered():
                     self.logger.log("Early stopping triggered")
                     break
 
