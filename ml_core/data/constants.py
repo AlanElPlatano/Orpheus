@@ -108,6 +108,7 @@ DROPOUT = 0.1  # Dropout rate
 DEFAULT_BATCH_SIZE = 8
 DEFAULT_LEARNING_RATE = 1e-4
 WARMUP_STEPS = 1000
+MAX_WARMUP_FRACTION = 0.1  # Warmup never exceeds this fraction of total training steps
 GRADIENT_CLIP = 1.0
 WEIGHT_DECAY = 0.01
 
@@ -496,6 +497,7 @@ __all__ = [
     'DEFAULT_BATCH_SIZE',
     'DEFAULT_LEARNING_RATE',
     'WARMUP_STEPS',
+    'MAX_WARMUP_FRACTION',
     'GRADIENT_CLIP',
     'WEIGHT_DECAY',
 

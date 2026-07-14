@@ -30,7 +30,7 @@ from ..utils.logging_utils import (
     print_training_header, print_epoch_summary, print_progress
 )
 from ..data.vocab import load_vocabulary, VocabularyInfo
-from ..data.constants import CONDITION_NONE_ID, TEMPO_NONE_VALUE
+from ..data.constants import CONDITION_NONE_ID, TEMPO_NONE_VALUE, MAX_WARMUP_FRACTION
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +101,7 @@ class Trainer:
         self.scheduler = create_scheduler(
             optimizer=self.optimizer,
             scheduler_type=config.lr_scheduler_type,
-            num_warmup_steps=config.warmup_steps,
+            num_warmup_steps=self._get_effective_warmup_steps(num_training_steps),
             num_training_steps=num_training_steps,
             min_lr_ratio=config.min_lr_ratio
         )
@@ -135,6 +135,20 @@ class Trainer:
         print_device_info(self.device)
         if self.device.type == "cuda":
             print_memory_info(self.device)
+
+    def _get_effective_warmup_steps(self, num_training_steps: int) -> int:
+        """
+        Cap warmup to a fraction of the run so short runs don't spend
+        most of their steps ramping up the learning rate.
+        """
+        warmup_cap = int(num_training_steps * MAX_WARMUP_FRACTION)
+        if self.config.warmup_steps > warmup_cap:
+            logger.info(
+                f"Warmup capped from {self.config.warmup_steps} to {warmup_cap} steps "
+                f"({MAX_WARMUP_FRACTION:.0%} of {num_training_steps} total steps)"
+            )
+            return warmup_cap
+        return self.config.warmup_steps
 
     def _load_vocab_and_tokenizer_config(self):
         """Load vocabulary and tokenizer config from data directory for checkpoint saving."""
