@@ -344,24 +344,29 @@ def apply_melody_pitch_variety_constraint(
     state: GenerationState,
     generated_tokens: List[int],
     vocab_info: 'VocabularyInfo',
-    window_size: int = 8,
-    repetition_penalty: float = 1.2,
+    window_size: int = 6,
+    repetition_penalty: float = 1.3,
+    repetition_threshold: int = 3,
     max_consecutive_same_pitch: int = 6,
     mask_value: float = float('-inf')
 ) -> torch.Tensor:
     """
-    Fight melody pitch collapse with a soft penalty and a hard cap.
+    Fight melody pitch collapse with a dead-zone soft penalty and a hard cap.
 
-    Soft penalty: each pitch's logit is penalized proportionally to how
-    often that pitch appeared in the last window_size melody notes, so a
-    pitch that starts dominating the window becomes progressively less
-    likely. Hard cap: after max_consecutive_same_pitch identical melody
-    pitches in a row, that pitch is masked for the next note, so a fully
-    collapsed one-note melody can never be produced.
+    Soft penalty: a pitch is only penalized once it OVER-repeats within the
+    recent window (appears at least repetition_threshold times), and then in
+    proportion to how far past that threshold it goes. Normal melodic and
+    motivic repetition stays untouched, because that repetition is what makes
+    a line feel purposeful rather than aimless; only a pitch that starts
+    dominating the window gets pushed down. Hard cap: after
+    max_consecutive_same_pitch identical melody pitches in a row, that pitch
+    is masked for the next note, so a fully collapsed one-note melody can
+    never be produced.
 
-    Training data melodies repeat their top pitch ~40% of the time, so
-    mild repetition must stay allowed; the defaults only target the
-    degenerate 95-100% single-pitch loops. Chord sections are untouched.
+    Training data melodies repeat their top pitch ~40% of the time, so the
+    dead zone deliberately allows that; the penalty only targets the
+    degenerate over-repetition that precedes a single-pitch loop. Chord
+    sections are untouched.
 
     Args:
         logits: Model output logits, shape [batch_size, vocab_size]
@@ -369,7 +374,10 @@ def apply_melody_pitch_variety_constraint(
         generated_tokens: Previously generated token IDs
         vocab_info: Vocabulary information
         window_size: Number of recent melody notes for the soft penalty
-        repetition_penalty: Per-occurrence penalty base (1.0 = disabled)
+        repetition_penalty: Penalty base applied per occurrence past the
+            threshold (1.0 = disabled)
+        repetition_threshold: Occurrences within the window a pitch is
+            allowed before the penalty starts (motivic repetition passes)
         max_consecutive_same_pitch: Run length that triggers the hard mask
         mask_value: Value to use for masked positions
 
@@ -385,10 +393,15 @@ def apply_melody_pitch_variety_constraint(
 
     logits = logits.clone()
 
-    # Soft penalty: discourage pitches that dominate the recent window
+    # Soft penalty: only fires once a pitch over-repeats within the window,
+    # so ordinary motivic repetition (the thing that gives a melody direction)
+    # passes through untouched.
     recent = melody_pitches[-window_size:]
     for pitch_id, count in Counter(recent).items():
-        factor = repetition_penalty ** count
+        excess = count - (repetition_threshold - 1)
+        if excess <= 0:
+            continue
+        factor = repetition_penalty ** excess
         value = logits[:, pitch_id]
         logits[:, pitch_id] = torch.where(value > 0, value / factor, value * factor)
 
