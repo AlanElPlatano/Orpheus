@@ -312,31 +312,49 @@ def apply_chord_repetition_limit(
     return constrained
 
 
-def _extract_melody_pitch_history(
+def _collect_recent_melody_pitches(
     generated_tokens: List[int],
-    vocab_info: 'VocabularyInfo'
+    vocab_info: 'VocabularyInfo',
+    needed: int
 ) -> List[int]:
     """
-    Collect melody-section pitch tokens in generation order.
+    Collect the last `needed` melody-section pitch tokens, in generation order.
 
-    Tokens before any structural marker count as melody, matching how
-    track IDs are assigned during generation.
+    Scans backwards and stops as soon as enough pitches are found, so the
+    per-step cost stays O(needed) instead of re-walking the full prefix.
+    The caller guarantees the trailing segment is melody (current_track
+    check), so its pitches are collected directly. Pitches in earlier
+    segments are buffered until the marker below them reveals their track:
+    a melody-start marker flushes the buffer, a chord-start marker discards
+    it. Tokens before any marker count as melody, matching how track IDs
+    are assigned during generation.
     """
     chord_start_id = vocab_info.chord_start_token_id
     melody_start_id = vocab_info.melody_start_token_id
 
-    in_melody = True
-    melody_pitches = []
+    collected = []  # newest-first
+    unresolved_segment = None  # None while inside the trailing melody segment
 
-    for token in generated_tokens:
-        if token == chord_start_id:
-            in_melody = False
-        elif token == melody_start_id:
-            in_melody = True
-        elif in_melody and vocab_info.is_pitch_token(token):
-            melody_pitches.append(token)
+    for token in reversed(generated_tokens):
+        if token == melody_start_id or token == chord_start_id:
+            if unresolved_segment is not None and token == melody_start_id:
+                collected.extend(unresolved_segment)
+            unresolved_segment = []
+        elif vocab_info.is_pitch_token(token):
+            if unresolved_segment is None:
+                collected.append(token)
+            else:
+                unresolved_segment.append(token)
 
-    return melody_pitches
+        if len(collected) >= needed:
+            break
+    else:
+        if unresolved_segment:
+            collected.extend(unresolved_segment)
+
+    del collected[needed:]
+    collected.reverse()
+    return collected
 
 
 def apply_melody_pitch_variety_constraint(
@@ -387,7 +405,13 @@ def apply_melody_pitch_variety_constraint(
     if state.current_track != 'melody':
         return logits
 
-    melody_pitches = _extract_melody_pitch_history(generated_tokens, vocab_info)
+    # Both checks below need at most this many trailing melody pitches:
+    # a run of max_consecutive_same_pitch already triggers the mask, so
+    # longer runs need no extra history.
+    needed = max(window_size, max_consecutive_same_pitch)
+    melody_pitches = _collect_recent_melody_pitches(
+        generated_tokens, vocab_info, needed
+    )
     if not melody_pitches:
         return logits
 
