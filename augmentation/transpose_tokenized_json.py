@@ -46,9 +46,12 @@ KEY_CIRCLE = [
     'F#', 'G', 'Ab', 'A', 'Bb', 'B'
 ]
 
+# Spellings must match MINOR_KEYS in ml_core/data/constants.py, or the
+# transposed key_signature falls out of KEY_TO_ID and the file silently
+# loses its key conditioning during training.
 KEY_CIRCLE_MINOR = [
-    'Cm', 'Dbm', 'Dm', 'Ebm', 'Em', 'Fm',
-    'F#m', 'Gm', 'Abm', 'Am', 'Bbm', 'Bm'
+    'Cm', 'C#m', 'Dm', 'Ebm', 'Em', 'Fm',
+    'F#m', 'Gm', 'G#m', 'Am', 'Bbm', 'Bm'
 ]
 
 
