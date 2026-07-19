@@ -50,6 +50,10 @@ class GenerationConfig:
     max_generation_bars: int = 32  # Maximum bars to generate
     min_generation_bars: int = 8   # Minimum bars for valid output
 
+    # ========== Song Structure ==========
+    song_form: str = ""     # e.g. "AAAB"; empty = free-form (no assembly)
+    section_bars: int = 4   # Bars per section when a song form is set
+
     # ========== Retry Logic ==========
     max_retries: int = MAX_GENERATION_RETRIES
     retry_temperature_decay: float = 0.95  # Reduce temperature on retry
@@ -88,6 +92,8 @@ class GenerationConfig:
             "max_length": self.max_length,
             "max_generation_bars": self.max_generation_bars,
             "min_generation_bars": self.min_generation_bars,
+            "song_form": self.song_form,
+            "section_bars": self.section_bars,
             "max_retries": self.max_retries,
             "retry_temperature_decay": self.retry_temperature_decay,
             "output_dir": str(self.output_dir),

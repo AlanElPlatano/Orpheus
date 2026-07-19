@@ -18,6 +18,7 @@ from .generation_config import GenerationConfig, GenerationResult
 from .two_stage import TwoStageGenerator
 from .validator import ConstraintValidator
 from .midi_export import tokens_to_midi, save_token_sequence
+from .structure import bars_needed_for_form, build_structured_sequence
 from ..data.constants import (
     KEY_TO_ID,
     TIME_SIG_TO_ID,
@@ -321,14 +322,24 @@ class MusicGenerator:
                     key_ids, tempo_values, time_sig_ids = self._create_conditioning_tensors()
 
                 # Generate token sequence
-                token_ids = self.two_stage_generator.generate_complete_sequence(
-                    prompt_tokens=prompt_tokens,
-                    seed=generation_seed,
-                    temperature=current_temperature,
-                    key_ids=key_ids,
-                    tempo_values=tempo_values,
-                    time_sig_ids=time_sig_ids
-                )
+                if self.config.song_form:
+                    token_ids = self._generate_structured_sequence(
+                        prompt_tokens=prompt_tokens,
+                        seed=generation_seed,
+                        temperature=current_temperature,
+                        key_ids=key_ids,
+                        tempo_values=tempo_values,
+                        time_sig_ids=time_sig_ids
+                    )
+                else:
+                    token_ids = self.two_stage_generator.generate_complete_sequence(
+                        prompt_tokens=prompt_tokens,
+                        seed=generation_seed,
+                        temperature=current_temperature,
+                        key_ids=key_ids,
+                        tempo_values=tempo_values,
+                        time_sig_ids=time_sig_ids
+                    )
 
                 result.token_ids = token_ids
                 result.sequence_length = len(token_ids)
@@ -434,6 +445,51 @@ class MusicGenerator:
             logger.error(f"Generation failed: {result.get_summary()}")
 
         return result
+
+    def _generate_structured_sequence(
+        self,
+        prompt_tokens: Optional[List[int]],
+        seed: Optional[int],
+        temperature: float,
+        key_ids: Optional[torch.Tensor],
+        tempo_values: Optional[torch.Tensor],
+        time_sig_ids: Optional[torch.Tensor]
+    ) -> List[int]:
+        """
+        Generate a song following config.song_form (e.g. "AAAB").
+
+        Generates one continuous core holding every distinct section
+        (A = first section_bars bars, B = the next section_bars bars),
+        then assembles the full song by repeating those sections per the
+        form. The bar limits are overridden for the core generation: one
+        extra bar is requested so the bar-count stop fires on the surplus
+        Bar token, guaranteeing every core bar is complete.
+        """
+        core_bars = bars_needed_for_form(
+            self.config.song_form, self.config.section_bars
+        )
+
+        original_max_bars = self.config.max_generation_bars
+        original_min_bars = self.config.min_generation_bars
+        self.config.max_generation_bars = core_bars + 1
+        self.config.min_generation_bars = core_bars + 1
+
+        try:
+            core_tokens = self.two_stage_generator.generate_complete_sequence(
+                prompt_tokens=prompt_tokens,
+                seed=seed,
+                temperature=temperature,
+                key_ids=key_ids,
+                tempo_values=tempo_values,
+                time_sig_ids=time_sig_ids
+            )
+        finally:
+            self.config.max_generation_bars = original_max_bars
+            self.config.min_generation_bars = original_min_bars
+
+        return build_structured_sequence(
+            core_tokens, self.config.song_form, self.config.section_bars
+        )
 
     def generate_batch(
         self,
