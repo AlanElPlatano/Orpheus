@@ -41,20 +41,28 @@ def extract_original_id(filename: str) -> str:
         # Remove everything from '-transpose' onwards
         name = name[:transpose_pos]
 
-    # Now we have something like "Fm-125bpm-remi-dime"
-    # Split by hyphens
+    # Now we have something like "Fm-125bpm-remi-dime". Transposed copies of
+    # originals whose filename key spelling differs from their metadata key
+    # (e.g. "Aflatm" vs "Abm") carry a doubled prefix like
+    # "Dm-Aflatm-123bpm-remi-dime", so we drop every part up to and
+    # including the tempo instead of assuming a single key prefix.
+    # Grouping must be exact here: a transposition split apart from its
+    # original leaks that song's material across train/val boundaries.
     parts = name.split('-')
 
-    # Remove key (first part), tempo (second part with 'bpm'), and 'remi'
     filtered_parts = []
-    for i, part in enumerate(parts):
-        if i == 0:  # Skip key (e.g., "Fm", "C#m")
-            continue
-        if 'bpm' in part:  # Skip tempo (e.g., "125bpm")
+    tempo_seen = False
+    for part in parts:
+        if not tempo_seen:
+            tempo_seen = 'bpm' in part
             continue
         if part == 'remi':  # Skip tokenization type
             continue
         filtered_parts.append(part)
+
+    if not filtered_parts:
+        # No tempo part found - fall back to the full remaining name
+        return name
 
     # Join remaining parts to get original song ID
     original_id = '-'.join(filtered_parts)
