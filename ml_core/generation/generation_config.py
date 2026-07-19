@@ -68,6 +68,20 @@ class GenerationConfig:
     validate_output: bool = True      # Validate constraints after generation
     seed: Optional[int] = None        # Random seed for reproducibility
 
+    @property
+    def max_bars_per_chord(self) -> int:
+        """
+        Longest span, in bars, one chord may sustain during generation.
+
+        Half the section length, so every section is guaranteed at least
+        two different chords regardless of section size (2 -> 1, 4 -> 2,
+        8 -> 4). Free-form generation has no sections and uses a fixed
+        2-bar span.
+        """
+        if self.song_form:
+            return max(1, self.section_bars // 2)
+        return 2
+
     def __post_init__(self):
         """Validate and convert paths."""
         if self.checkpoint_path is not None:

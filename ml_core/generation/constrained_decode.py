@@ -312,6 +312,89 @@ def apply_chord_repetition_limit(
     return constrained
 
 
+def _current_chord_section_pitches(
+    generated_tokens: List[int],
+    vocab_info: 'VocabularyInfo'
+) -> Optional[Set[int]]:
+    """
+    Pitches stated so far in the still-open chord section.
+
+    Returns None when generation is not inside an open chord section
+    (the most recent structural marker is not ChordStart).
+    """
+    pitches: Set[int] = set()
+    for token in reversed(generated_tokens):
+        if token == vocab_info.chord_start_token_id:
+            return pitches
+        if token == vocab_info.melody_start_token_id:
+            return None
+        if vocab_info.is_pitch_token(token):
+            pitches.add(token)
+    return None
+
+
+def apply_chord_span_limit(
+    logits: torch.Tensor,
+    state: 'GenerationState',
+    generated_tokens: List[int],
+    vocab_info: 'VocabularyInfo',
+    max_bars_per_chord: int = 2,
+    mask_value: float = float('-inf')
+) -> torch.Tensor:
+    """
+    Force a fresh chord statement before a chord sustains past the limit.
+
+    A chord is stated once and then sustains through bars whose chord
+    sections stay empty, so a single lazy draw can put one chord under an
+    entire song. Once the sustain would exceed max_bars_per_chord bars,
+    the open chord section may not close empty: MelodyStart is masked
+    until at least one pitch is stated, and the previous chord's bass
+    pitch is masked at that first statement so the harmony has to move
+    (chords sharing upper tones with the previous chord stay available).
+
+    Args:
+        logits: Model output logits, shape [batch_size, vocab_size]
+        state: Current generation state
+        generated_tokens: Previously generated token IDs
+        vocab_info: Vocabulary information
+        max_bars_per_chord: Longest span, in bars, one chord may cover
+        mask_value: Value to use for masked positions
+
+    Returns:
+        Logits with the chord span limit applied
+    """
+    if state.current_track != 'chord':
+        return logits
+
+    current_section = _current_chord_section_pitches(generated_tokens, vocab_info)
+    if current_section is None or current_section:
+        return logits
+
+    completed = _extract_completed_chord_pitch_sets(generated_tokens, vocab_info)
+    if not completed:
+        return logits
+
+    trailing_empty = 0
+    for pitches in reversed(completed):
+        if pitches:
+            break
+        trailing_empty += 1
+
+    # Statement bar + trailing empty bars + this bar, were it to close empty
+    span_if_closed_empty = trailing_empty + 2
+    if span_if_closed_empty <= max_bars_per_chord:
+        return logits
+
+    logits = logits.clone()
+    logits[:, vocab_info.melody_start_token_id] = mask_value
+
+    last_stated = next((p for p in reversed(completed) if p), None)
+    if last_stated:
+        logits[:, min(last_stated)] = mask_value
+
+    return logits
+
+
 def _collect_recent_melody_pitches(
     generated_tokens: List[int],
     vocab_info: 'VocabularyInfo',
@@ -627,7 +710,8 @@ def apply_all_constraints(
     key: Optional[str] = None,
     diatonic_boost_weight: float = 2.0,
     generated_tokens: Optional[List[int]] = None,
-    max_consecutive_repetitions: int = 5
+    max_consecutive_repetitions: int = 5,
+    max_bars_per_chord: int = 2
 ) -> torch.Tensor:
     """
     Apply all musical constraints to logits.
@@ -643,6 +727,7 @@ def apply_all_constraints(
         diatonic_boost_weight: Boost weight for diatonic pitches
         generated_tokens: Previously generated tokens for repetition constraint
         max_consecutive_repetitions: Max allowed consecutive repeats of same token
+        max_bars_per_chord: Longest span, in bars, one chord may sustain
 
     Returns:
         Constrained logits
@@ -667,6 +752,13 @@ def apply_all_constraints(
     # Prevent the same chord from repeating more than 4 consecutive bars
     if generated_tokens is not None:
         logits = apply_chord_repetition_limit(logits, generated_tokens, state, vocab_info)
+
+    # Force a chord change before one chord sustains through the whole song
+    if generated_tokens is not None:
+        logits = apply_chord_span_limit(
+            logits, state, generated_tokens, vocab_info,
+            max_bars_per_chord=max_bars_per_chord
+        )
 
     # Diatonic boost DISABLED: it distorts the logit distribution at every step,
     # inflating pitch token probabilities even when structural tokens (BAR, TimeSig,
@@ -768,6 +860,7 @@ __all__ = [
     'apply_grammar_constraint',
     'apply_melody_pitch_variety_constraint',
     'apply_chord_repetition_limit',
+    'apply_chord_span_limit',
     'apply_consecutive_repetition_constraint',
     'apply_diatonic_boost_enhanced',
     'apply_chord_sustain_constraint_enhanced',

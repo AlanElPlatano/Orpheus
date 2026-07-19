@@ -344,7 +344,8 @@ class TwoStageGenerator:
                     self.vocab_info,
                     self.pitch_token_to_midi,
                     self.config.key,
-                    generated_tokens=generated_tokens
+                    generated_tokens=generated_tokens,
+                    max_bars_per_chord=self.config.max_bars_per_chord
                 )
 
                 # Block EOS during chord stage - we must reach MelodyStart
@@ -475,7 +476,8 @@ class TwoStageGenerator:
                     self.vocab_info,
                     self.pitch_token_to_midi,
                     self.config.key,
-                    generated_tokens=generated_tokens
+                    generated_tokens=generated_tokens,
+                    max_bars_per_chord=self.config.max_bars_per_chord
                 )
 
                 # Block EOS until minimum bars are generated
