@@ -128,6 +128,8 @@ def start_generation(
     time_signature: str,
     apply_chord_sustain: bool,
     seed: Optional[int] = None,
+    song_form: str = "",
+    section_bars: int = 4,
     progress=gr.Progress()
 ) -> Tuple[str, pd.DataFrame, str]:
     """Start music generation."""
@@ -162,6 +164,10 @@ def start_generation(
 
         # Seed for reproducible generation (each file in the batch uses seed + index)
         config.seed = int(seed) if seed is not None else None
+
+        # Song structure: assemble sections into a form (empty = free-form)
+        config.song_form = song_form
+        config.section_bars = int(section_bars)
 
         # Update generator config (keeps two-stage generator in sync)
         app_state.generator.update_config(config)
@@ -404,7 +410,25 @@ def create_generator_tab() -> gr.Tab:
                     minimum=8,
                     maximum=64,
                     value=32,
-                    step=4
+                    step=4,
+                    info="Only used in free-form mode; a song form sets its own length."
+                )
+
+                song_form_dropdown = gr.Dropdown(
+                    label="Song Form",
+                    choices=[
+                        ("AAAB (core ×3 + contrast)", "AAAB"),
+                        ("Free (no structure)", "")
+                    ],
+                    value="AAAB",
+                    info="Assembles the song from a repeating core section, like the training songs do."
+                )
+
+                section_bars_dropdown = gr.Dropdown(
+                    label="Section Length (bars)",
+                    choices=[2, 4, 8],
+                    value=4,
+                    info="Bars per section when a song form is selected."
                 )
 
                 output_dir_textbox = gr.Textbox(
@@ -501,9 +525,13 @@ def create_generator_tab() -> gr.Tab:
             outputs=[checkpoint_dropdown]
         )
 
-        # Load model
+        # Load model, enabling the generate button on success
+        def on_load_model(checkpoint_name):
+            message, success = load_model(checkpoint_name)
+            return message, gr.update(interactive=success)
+
         load_model_btn.click(
-            fn=load_model,
+            fn=on_load_model,
             inputs=[checkpoint_dropdown],
             outputs=[model_status, generate_btn]
         ).then(
@@ -545,7 +573,9 @@ def create_generator_tab() -> gr.Tab:
                 tempo_slider,
                 time_sig_dropdown,
                 chord_sustain_checkbox,
-                seed_input
+                seed_input,
+                song_form_dropdown,
+                section_bars_dropdown
             ],
             outputs=[
                 generation_status,
