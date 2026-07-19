@@ -105,6 +105,27 @@ class MusicGenerator:
 
         return key_id_tensor, tempo_value_tensor, time_sig_id_tensor
 
+    def update_config(self, config: GenerationConfig):
+        """
+        Replace the generation config, keeping sub-components in sync.
+
+        The two-stage generator holds its own reference to the config, so
+        assigning to self.config directly would leave it reading stale
+        settings (sampling parameters, bar limits, key constraint).
+        Also re-applies the model's context-length cap set during loading.
+        """
+        if self.model is not None and config.max_length > self.model.max_len:
+            logger.warning(
+                f"Capping generation max_length from {config.max_length} "
+                f"to {self.model.max_len} to match model's trained context length"
+            )
+            config.max_length = self.model.max_len
+
+        self.config = config
+
+        if self.two_stage_generator is not None:
+            self.two_stage_generator.config = config
+
     def load_checkpoint(self, checkpoint_path: Path) -> bool:
         """
         Load model and related data from checkpoint.
