@@ -41,26 +41,39 @@ SEMITONE_OFFSETS = {
     'default': list(range(-6, 6))
 }
 
+# Output spellings, indexed by semitone. These must match MAJOR_KEYS /
+# MINOR_KEYS in ml_core/data/constants.py, or the transposed key_signature
+# falls out of KEY_TO_ID and the file silently loses its key conditioning
+# during training.
 KEY_CIRCLE = [
     'C', 'Db', 'D', 'Eb', 'E', 'F',
     'F#', 'G', 'Ab', 'A', 'Bb', 'B'
 ]
 
-# Spellings must match MINOR_KEYS in ml_core/data/constants.py, or the
-# transposed key_signature falls out of KEY_TO_ID and the file silently
-# loses its key conditioning during training.
 KEY_CIRCLE_MINOR = [
     'Cm', 'C#m', 'Dm', 'Ebm', 'Em', 'Fm',
     'F#m', 'Gm', 'G#m', 'Am', 'Bbm', 'Bm'
 ]
+
+# Input spellings: source metadata may use either enharmonic name for a
+# root (e.g. 'Abm' and 'G#m' are the same key), so lookup goes through
+# semitones instead of matching against the output circles.
+NOTE_TO_SEMITONE = {
+    'C': 0, 'C#': 1, 'Db': 1, 'D': 2, 'D#': 3, 'Eb': 3,
+    'E': 4, 'F': 5, 'F#': 6, 'Gb': 6, 'G': 7, 'G#': 8,
+    'Ab': 8, 'A': 9, 'A#': 10, 'Bb': 10, 'B': 11
+}
 
 
 def calculate_new_key(original_key: str, semitones: int) -> str:
     """
     Calculate the new key after transposition.
 
+    Accepts any enharmonic spelling of the original key and returns the
+    canonical spelling used by the training vocabulary.
+
     Args:
-        original_key: Original key signature (e.g., 'Fm', 'C', 'Bb')
+        original_key: Original key signature (e.g., 'Fm', 'C', 'Abm')
         semitones: Number of semitones to transpose (+/- 1-6)
 
     Returns:
@@ -69,26 +82,19 @@ def calculate_new_key(original_key: str, semitones: int) -> str:
     Example:
         >>> calculate_new_key('Fm', 2)
         'Gm'
-        >>> calculate_new_key('C', -3)
-        'A'
+        >>> calculate_new_key('Abm', 1)
+        'Am'
     """
     is_minor = original_key.endswith('m')
+    root = original_key[:-1] if is_minor else original_key
 
-    # Select the appropriate circle based on major/minor
-    if is_minor:
-        circle = KEY_CIRCLE_MINOR
-    else:
-        circle = KEY_CIRCLE
-
-    # Find the current key's position in the circle
-    try:
-        current_index = circle.index(original_key)
-    except ValueError:
-        logger.warning(f"Key '{original_key}' not found in circle. Returning original.")
+    root_semitone = NOTE_TO_SEMITONE.get(root)
+    if root_semitone is None:
+        logger.warning(f"Unknown key root '{original_key}'. Returning original.")
         return original_key
 
-    new_index = (current_index + semitones) % 12
-    return circle[new_index]
+    circle = KEY_CIRCLE_MINOR if is_minor else KEY_CIRCLE
+    return circle[(root_semitone + semitones) % 12]
 
 
 def transpose_tokens(
